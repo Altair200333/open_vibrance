@@ -41,9 +41,10 @@ class DotIndicator extends StatefulWidget {
   double get _indicatorDotWidth {
     switch (state) {
       case IndicatorState.recording:
-      case IndicatorState.transcribing:
       case IndicatorState.expanded:
         return kDotSize;
+      case IndicatorState.transcribing:
+        return kDotSize * 2;
       case IndicatorState.idle:
         {
           if (isHovered) {
@@ -59,9 +60,10 @@ class DotIndicator extends StatefulWidget {
   double get _indicatorDotHeight {
     switch (state) {
       case IndicatorState.recording:
-      case IndicatorState.transcribing:
       case IndicatorState.expanded:
         return kDotSize;
+      case IndicatorState.transcribing:
+        return kDotSize * 0.5;
       case IndicatorState.idle:
         {
           if (isHovered) {
@@ -85,9 +87,8 @@ class DotIndicator extends StatefulWidget {
         );
       case IndicatorState.transcribing:
         return BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(kDotSize),
-          border: Border.all(color: Colors.blue, width: 2),
+          color: Colors.blue,
+          borderRadius: BorderRadius.circular(5),
         );
       case IndicatorState.expanded:
         return BoxDecoration(
@@ -117,60 +118,35 @@ class DotIndicator extends StatefulWidget {
         );
     }
   }
-
-  Widget? get _indicatorDotContent {
-    switch (state) {
-      case IndicatorState.recording:
-      case IndicatorState.transcribing:
-        return null;
-      case IndicatorState.expanded:
-        return Icon(Icons.close, color: Colors.white, size: kDotSize * 0.65);
-      case IndicatorState.idle:
-        return AnimatedOpacity(
-          opacity: isHovered ? 1.0 : 0.0,
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeInOutCubic,
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              const count = 3;
-              return Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                spacing: 4,
-                children: List.generate(count, (index) {
-                  final size = isHovered ? kDotSize * 0.25 : kDotSize * 0.1;
-                  return AnimatedContainer(
-                    duration: const Duration(milliseconds: 200),
-                    width: size,
-                    height: size,
-                    decoration: const BoxDecoration(
-                      color: Colors.white,
-                      shape: BoxShape.circle,
-                    ),
-                  );
-                }),
-              );
-            },
-          ),
-        );
-      default:
-        return null;
-    }
-  }
 }
 
 class _DotIndicatorState extends State<DotIndicator>
     with SingleTickerProviderStateMixin {
   late final AnimationController _pulseController;
+  late final List<Animation<double>> _dotScales;
   late final Animation<double> _scaleAnimation;
   late final Animation<Color?> _colorAnimation;
 
   @override
   void initState() {
     super.initState();
+    _initAnimations();
+  }
+
+  void _initAnimations() {
     _pulseController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 800),
     );
+    _dotScales = List.generate(3, (index) {
+      final start = index * 0.2;
+      return Tween<double>(begin: 0.7, end: 1.3).animate(
+        CurvedAnimation(
+          parent: _pulseController,
+          curve: Interval(start, start + 0.6, curve: Curves.easeInOut),
+        ),
+      );
+    });
     _scaleAnimation = Tween<double>(begin: 0.8, end: 1.2).animate(
       CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
     );
@@ -204,26 +180,74 @@ class _DotIndicatorState extends State<DotIndicator>
     super.dispose();
   }
 
-  Widget _buildIndicator(double width, double height) {
-    if (widget.state == IndicatorState.transcribing) {
-      return AnimatedBuilder(
-        animation: _pulseController,
-        builder: (context, child) {
-          return Transform.scale(
-            scale: _scaleAnimation.value,
-            child: Container(
-              width: width,
-              height: height,
-              decoration: BoxDecoration(
-                color: _colorAnimation.value,
-                borderRadius: BorderRadius.circular(kDotSize),
-                border: Border.all(color: Colors.blue, width: 2),
+  Widget? get _indicatorDotContent {
+    switch (widget.state) {
+      case IndicatorState.recording:
+      case IndicatorState.transcribing:
+        return AnimatedBuilder(
+          animation: _pulseController,
+          builder: (context, child) {
+            return Container(
+              decoration: widget._indicatorDotDecoration,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: List.generate(3, (index) {
+                  final scale = _dotScales[index].value;
+                  return Transform.scale(
+                    scale: scale,
+                    child: Container(
+                      width: kDotSize * 0.3,
+                      height: kDotSize * 0.3,
+                      margin: const EdgeInsets.symmetric(horizontal: 2),
+                      decoration: const BoxDecoration(
+                        color: Colors.white,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                  );
+                }),
               ),
-            ),
-          );
-        },
-      );
-    } else if (widget.state == IndicatorState.recording) {
+            );
+          },
+        );
+        ;
+      case IndicatorState.expanded:
+        return Icon(Icons.close, color: Colors.white, size: kDotSize * 0.65);
+      case IndicatorState.idle:
+        return AnimatedOpacity(
+          opacity: widget.isHovered ? 1.0 : 0.0,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeInOutCubic,
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              const count = 3;
+              return Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                spacing: 4,
+                children: List.generate(count, (index) {
+                  final size =
+                      widget.isHovered ? kDotSize * 0.25 : kDotSize * 0.1;
+                  return AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    width: size,
+                    height: size,
+                    decoration: const BoxDecoration(
+                      color: Colors.white,
+                      shape: BoxShape.circle,
+                    ),
+                  );
+                }),
+              );
+            },
+          ),
+        );
+      default:
+        return null;
+    }
+  }
+
+  Widget _buildIndicator(double width, double height) {
+    if (widget.state == IndicatorState.recording) {
       // normalize volume to 0.0-1.0 based on dB range
       final normalized = widget._getNormalizedVolume();
 
@@ -239,16 +263,15 @@ class _DotIndicatorState extends State<DotIndicator>
         height: height * sizeScale,
         decoration: widget._indicatorDotDecoration,
       );
-    } else {
-      return AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
-        curve: Curves.easeInOutCubic,
-        width: width,
-        height: height,
-        decoration: widget._indicatorDotDecoration,
-        child: widget._indicatorDotContent,
-      );
     }
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 180),
+      curve: Curves.easeInOutCubic,
+      width: width,
+      height: height,
+      decoration: widget._indicatorDotDecoration,
+      child: _indicatorDotContent,
+    );
   }
 
   @override
