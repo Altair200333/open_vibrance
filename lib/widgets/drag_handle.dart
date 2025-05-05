@@ -23,7 +23,7 @@ class _DragHandleState extends State<DragHandle> {
   Widget build(BuildContext context) {
     final isVisible = widget.dragging || widget.showWindowContent;
     final handleActive = _hovering || widget.dragging;
-    const iconSize = 7.0;
+    var iconSize = handleActive ? 8.0 : 6.0;
 
     return AnimatedOpacity(
       opacity: isVisible ? 1.0 : 0.0,
@@ -44,32 +44,40 @@ class _DragHandleState extends State<DragHandle> {
             child: Stack(
               alignment: Alignment.center,
               children: [
-                Align(
-                  alignment: Alignment.topCenter,
+                AnimatedAlign(
+                  duration: const Duration(milliseconds: 120),
+                  alignment:
+                      handleActive ? Alignment.topCenter : Alignment(0, -0.7),
                   child: Icon(
                     Icons.keyboard_arrow_up,
                     size: iconSize,
                     color: handleActive ? Colors.white : Colors.black,
                   ),
                 ),
-                Align(
-                  alignment: Alignment.bottomCenter,
+                AnimatedAlign(
+                  duration: const Duration(milliseconds: 120),
+                  alignment:
+                      handleActive ? Alignment.bottomCenter : Alignment(0, 0.7),
                   child: Icon(
                     Icons.keyboard_arrow_down,
                     size: iconSize,
                     color: handleActive ? Colors.white : Colors.black,
                   ),
                 ),
-                Align(
-                  alignment: Alignment.centerLeft,
+                AnimatedAlign(
+                  duration: const Duration(milliseconds: 120),
+                  alignment:
+                      handleActive ? Alignment.centerLeft : Alignment(-0.7, 0),
                   child: Icon(
                     Icons.keyboard_arrow_left,
                     size: iconSize,
                     color: handleActive ? Colors.white : Colors.black,
                   ),
                 ),
-                Align(
-                  alignment: Alignment.centerRight,
+                AnimatedAlign(
+                  duration: const Duration(milliseconds: 120),
+                  alignment:
+                      handleActive ? Alignment.centerRight : Alignment(0.7, 0),
                   child: Icon(
                     Icons.keyboard_arrow_right,
                     size: iconSize,

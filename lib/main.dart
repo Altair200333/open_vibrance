@@ -60,6 +60,7 @@ class _DotWindowState extends State<_DotWindow> with WindowListener {
   bool _settingsBoxVisible = false;
 
   double _pointerX = 0;
+  double _pointerY = 0;
 
   AudioRecorder? _audioRecorder;
   double _lastAmplitude = 0;
@@ -257,7 +258,10 @@ class _DotWindowState extends State<_DotWindow> with WindowListener {
   }
 
   void onHoverIndicator(PointerHoverEvent event) {
-    setState(() => _pointerX = event.localPosition.dx);
+    setState(() {
+      _pointerX = event.localPosition.dx;
+      _pointerY = event.localPosition.dy;
+    });
     _updateIndicatorHoveringState();
   }
 
