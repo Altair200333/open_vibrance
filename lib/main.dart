@@ -55,10 +55,12 @@ class _DotWindowState extends State<_DotWindow> with WindowListener {
   IndicatorState _indicatorState = IndicatorState.idle;
   bool _dragging = false;
   bool _hoveringWindow = false;
+  bool _hoveringIndicator = false;
   bool _showWindowContent = false;
   bool _settingsBoxVisible = false;
 
   double _pointerX = 0;
+
   AudioRecorder? _audioRecorder;
   double _lastAmplitude = 0;
 
@@ -155,8 +157,7 @@ class _DotWindowState extends State<_DotWindow> with WindowListener {
   }
 
   bool _canStartRecording() {
-    return _indicatorState == IndicatorState.idle ||
-        _indicatorState == IndicatorState.hovered;
+    return _indicatorState == IndicatorState.idle;
   }
 
   void _onStartRecording() {
@@ -250,11 +251,7 @@ class _DotWindowState extends State<_DotWindow> with WindowListener {
 
   void _updateIndicatorHoveringState() {
     setState(() {
-      if (_indicatorState != IndicatorState.recording &&
-          _indicatorState != IndicatorState.transcribing &&
-          _indicatorState != IndicatorState.expanded) {
-        _indicatorState = IndicatorState.hovered;
-      }
+      _hoveringIndicator = true;
       _showWindowContent = true;
     });
   }
@@ -270,11 +267,7 @@ class _DotWindowState extends State<_DotWindow> with WindowListener {
 
   void onMouseExitIndicator(PointerExitEvent event) {
     setState(() {
-      if (_indicatorState != IndicatorState.recording &&
-          _indicatorState != IndicatorState.transcribing &&
-          _indicatorState != IndicatorState.expanded) {
-        _indicatorState = IndicatorState.idle;
-      }
+      _hoveringIndicator = false;
     });
   }
 
@@ -285,6 +278,7 @@ class _DotWindowState extends State<_DotWindow> with WindowListener {
   void onMouseExitWindow(PointerExitEvent event) {
     setState(() {
       _hoveringWindow = false;
+      _hoveringIndicator = false;
       _showWindowContent = false;
     });
   }
@@ -387,6 +381,7 @@ class _DotWindowState extends State<_DotWindow> with WindowListener {
                     onExit: onMouseExitIndicator,
                     onHover: onHoverIndicator,
                     volume: _lastAmplitude,
+                    isHovered: _hoveringIndicator,
                   ),
                 ],
               ),

@@ -2,12 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:open_vibrance/widgets/constants.dart';
 
-enum IndicatorState { idle, hovered, recording, transcribing, expanded }
+enum IndicatorState { idle, recording, transcribing, expanded }
 
 const double kDotIndicatorMinScale = 0.4;
 const double kDotIndicatorMaxScale = 1;
-const double kDotIndicatorMinVolumeDb = -60.0;
-const double kDotIndicatorMaxVolumeDb = 0.0;
+const double kMinVolumeDb = -60.0;
+const double kMaxVolumeDb = 0.0;
 
 /// A circular indicator widget that changes appearance based on [IndicatorState].
 class DotIndicator extends StatefulWidget {
@@ -17,6 +17,7 @@ class DotIndicator extends StatefulWidget {
   final PointerExitEventListener onExit;
   final PointerHoverEventListener onHover;
   final double volume;
+  final bool isHovered;
 
   const DotIndicator({
     super.key,
@@ -26,15 +27,14 @@ class DotIndicator extends StatefulWidget {
     required this.onExit,
     required this.onHover,
     required this.volume,
+    required this.isHovered,
   });
 
   @override
   _DotIndicatorState createState() => _DotIndicatorState();
 
   double _getNormalizedVolume() {
-    final normalized =
-        (volume - kDotIndicatorMinVolumeDb) /
-        (kDotIndicatorMaxVolumeDb - kDotIndicatorMinVolumeDb);
+    final normalized = (volume - kMinVolumeDb) / (kMaxVolumeDb - kMinVolumeDb);
     return normalized.clamp(0.0, 1.0);
   }
 
@@ -44,9 +44,13 @@ class DotIndicator extends StatefulWidget {
       case IndicatorState.transcribing:
       case IndicatorState.expanded:
         return kDotSize;
-      case IndicatorState.hovered:
-        return kDotSize * 2.5;
       case IndicatorState.idle:
+        {
+          if (isHovered) {
+            return kDotSize * 2.5;
+          }
+          return kDotSize * 2;
+        }
       default:
         return kDotSize * 2;
     }
@@ -58,9 +62,15 @@ class DotIndicator extends StatefulWidget {
       case IndicatorState.transcribing:
       case IndicatorState.expanded:
         return kDotSize;
-      case IndicatorState.hovered:
-        return kDotSize;
+      // case IndicatorState.hovered:
+      //   return kDotSize;
       case IndicatorState.idle:
+        {
+          if (isHovered) {
+            return kDotSize;
+          }
+          return kDotSize * 0.5;
+        }
       default:
         return kDotSize * 0.5;
     }
@@ -87,12 +97,25 @@ class DotIndicator extends StatefulWidget {
           borderRadius: BorderRadius.circular(kDotSize),
           border: Border.all(color: Colors.white, width: 2),
         );
-      case IndicatorState.hovered:
-        return BoxDecoration(
-          color: Colors.blue,
-          borderRadius: BorderRadius.circular(5),
-        );
+      // case IndicatorState.hovered:
+      //   return BoxDecoration(
+      //     color: Colors.blue,
+      //     borderRadius: BorderRadius.circular(5),
+      //   );
       case IndicatorState.idle:
+        {
+          if (isHovered) {
+            return BoxDecoration(
+              color: Colors.blue,
+              borderRadius: BorderRadius.circular(5),
+            );
+          }
+          return BoxDecoration(
+            color: Colors.grey.withAlpha(120),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: Colors.white70, width: 1.5),
+          );
+        }
       default:
         return BoxDecoration(
           color: Colors.grey.withAlpha(120),
@@ -109,10 +132,9 @@ class DotIndicator extends StatefulWidget {
         return null;
       case IndicatorState.expanded:
         return Icon(Icons.close, color: Colors.white, size: kDotSize * 0.65);
-      case IndicatorState.hovered:
       case IndicatorState.idle:
         return AnimatedOpacity(
-          opacity: state == IndicatorState.hovered ? 1.0 : 0.0,
+          opacity: isHovered ? 1.0 : 0.0,
           duration: const Duration(milliseconds: 300),
           curve: Curves.easeInOutCubic,
           child: LayoutBuilder(
@@ -122,10 +144,7 @@ class DotIndicator extends StatefulWidget {
                 mainAxisAlignment: MainAxisAlignment.center,
                 spacing: 4,
                 children: List.generate(count, (index) {
-                  final size =
-                      state == IndicatorState.hovered
-                          ? kDotSize * 0.25
-                          : kDotSize * 0.1;
+                  final size = isHovered ? kDotSize * 0.25 : kDotSize * 0.1;
                   return AnimatedContainer(
                     duration: const Duration(milliseconds: 200),
                     width: size,
