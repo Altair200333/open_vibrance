@@ -44,7 +44,7 @@ class DotIndicator extends StatefulWidget {
       case IndicatorState.expanded:
         return kDotSize;
       case IndicatorState.transcribing:
-        return kDotSize * 2;
+        return kDotSize * 2.5;
       case IndicatorState.idle:
         {
           if (isHovered) {
@@ -63,7 +63,7 @@ class DotIndicator extends StatefulWidget {
       case IndicatorState.expanded:
         return kDotSize;
       case IndicatorState.transcribing:
-        return kDotSize * 0.5;
+        return kDotSize;
       case IndicatorState.idle:
         {
           if (isHovered) {
@@ -87,12 +87,13 @@ class DotIndicator extends StatefulWidget {
         );
       case IndicatorState.transcribing:
         return BoxDecoration(
-          color: Colors.blue,
+          color: Colors.black12,
           borderRadius: BorderRadius.circular(5),
+          border: Border.all(color: Colors.white, width: 2),
         );
       case IndicatorState.expanded:
         return BoxDecoration(
-          color: Colors.blue,
+          color: Colors.black54,
           borderRadius: BorderRadius.circular(kDotSize),
           border: Border.all(color: Colors.white, width: 2),
         );
@@ -100,14 +101,15 @@ class DotIndicator extends StatefulWidget {
         {
           if (isHovered) {
             return BoxDecoration(
-              color: Colors.blue,
+              color: Colors.black54,
               borderRadius: BorderRadius.circular(5),
+              border: Border.all(color: Colors.white, width: 2),
             );
           }
           return BoxDecoration(
-            color: Colors.grey.withAlpha(120),
+            color: Colors.black38,
             borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: Colors.white70, width: 1.5),
+            border: Border.all(color: Colors.white, width: 2),
           );
         }
       default:
@@ -183,34 +185,31 @@ class _DotIndicatorState extends State<DotIndicator>
   Widget? get _indicatorDotContent {
     switch (widget.state) {
       case IndicatorState.recording:
+        return null;
       case IndicatorState.transcribing:
         return AnimatedBuilder(
           animation: _pulseController,
           builder: (context, child) {
-            return Container(
-              decoration: widget._indicatorDotDecoration,
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: List.generate(3, (index) {
-                  final scale = _dotScales[index].value;
-                  return Transform.scale(
-                    scale: scale,
-                    child: Container(
-                      width: kDotSize * 0.3,
-                      height: kDotSize * 0.3,
-                      margin: const EdgeInsets.symmetric(horizontal: 2),
-                      decoration: const BoxDecoration(
-                        color: Colors.white,
-                        shape: BoxShape.circle,
-                      ),
+            return Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: List.generate(3, (index) {
+                final scale = _dotScales[index].value;
+                return Transform.scale(
+                  scale: scale,
+                  child: Container(
+                    width: kDotSize * 0.3,
+                    height: kDotSize * 0.3,
+                    margin: const EdgeInsets.symmetric(horizontal: 2),
+                    decoration: const BoxDecoration(
+                      color: Colors.white,
+                      shape: BoxShape.circle,
                     ),
-                  );
-                }),
-              ),
+                  ),
+                );
+              }),
             );
           },
         );
-        ;
       case IndicatorState.expanded:
         return Icon(Icons.close, color: Colors.white, size: kDotSize * 0.65);
       case IndicatorState.idle:
