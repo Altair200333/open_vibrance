@@ -60,6 +60,7 @@ class _DotWindowState extends State<_DotWindow> with WindowListener {
 
   double _pointerX = 0;
   AudioRecorder? _audioRecorder;
+  double _lastAmplitude = 0;
 
   final ShortcutHelper _shortcutHelper = ShortcutHelper();
 
@@ -107,6 +108,11 @@ class _DotWindowState extends State<_DotWindow> with WindowListener {
       const RecordConfig(encoder: AudioEncoder.wav),
       path: 'last_recording.wav',
     );
+    recorder.onAmplitudeChanged(Duration(milliseconds: 100)).listen((
+      amplitude,
+    ) {
+      setState(() => _lastAmplitude = amplitude.current);
+    });
   }
 
   Future<void> _transcribeFile(String path) async {
@@ -380,6 +386,7 @@ class _DotWindowState extends State<_DotWindow> with WindowListener {
                     onEnter: onMouseEnterIndicator,
                     onExit: onMouseExitIndicator,
                     onHover: onHoverIndicator,
+                    volume: _lastAmplitude,
                   ),
                 ],
               ),
