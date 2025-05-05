@@ -62,8 +62,6 @@ class DotIndicator extends StatefulWidget {
       case IndicatorState.transcribing:
       case IndicatorState.expanded:
         return kDotSize;
-      // case IndicatorState.hovered:
-      //   return kDotSize;
       case IndicatorState.idle:
         {
           if (isHovered) {
@@ -97,11 +95,6 @@ class DotIndicator extends StatefulWidget {
           borderRadius: BorderRadius.circular(kDotSize),
           border: Border.all(color: Colors.white, width: 2),
         );
-      // case IndicatorState.hovered:
-      //   return BoxDecoration(
-      //     color: Colors.blue,
-      //     borderRadius: BorderRadius.circular(5),
-      //   );
       case IndicatorState.idle:
         {
           if (isHovered) {
