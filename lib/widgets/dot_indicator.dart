@@ -220,7 +220,6 @@ class _DotIndicatorState extends State<DotIndicator>
           kDotIndicatorMinScale +
           normalized * (kDotIndicatorMaxScale - kDotIndicatorMinScale);
 
-      print('sizeScale: $sizeScale, width: $width, height: $height');
       return AnimatedContainer(
         duration: const Duration(milliseconds: 100),
         curve: Curves.easeOut,

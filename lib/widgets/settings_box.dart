@@ -48,9 +48,9 @@ class _SettingsBoxState extends State<SettingsBox> {
         width: widget.expandedWindowSize.width - dotSize * 3,
         height: widget.expandedWindowSize.height - dotSize * 3,
         decoration: BoxDecoration(
-          color: Colors.lightBlue.withAlpha(50),
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: Colors.white, width: 1.5),
+          color: Colors.grey.withAlpha(120),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: Colors.white70, width: 1.5),
           boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 8)],
         ),
         child: Padding(
@@ -76,15 +76,15 @@ class _SettingsBoxState extends State<SettingsBox> {
                   hintStyle: TextStyle(color: Colors.white54),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(8.0),
-                    borderSide: BorderSide(color: Colors.white),
+                    borderSide: BorderSide(color: Colors.white70),
                   ),
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(8.0),
-                    borderSide: BorderSide(color: Colors.white),
+                    borderSide: BorderSide(color: Colors.white70),
                   ),
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(8.0),
-                    borderSide: BorderSide(color: Colors.white),
+                    borderSide: BorderSide(color: Colors.blue, width: 2),
                   ),
                   contentPadding: EdgeInsets.symmetric(
                     horizontal: 12.0,
