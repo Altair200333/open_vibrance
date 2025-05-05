@@ -48,7 +48,7 @@ class _SettingsBoxState extends State<SettingsBox> {
         width: widget.expandedWindowSize.width - dotSize * 3,
         height: widget.expandedWindowSize.height - dotSize * 3,
         decoration: BoxDecoration(
-          color: Colors.black38,
+          color: Colors.lightBlue.withAlpha(50),
           borderRadius: BorderRadius.circular(8),
           border: Border.all(color: Colors.white, width: 1.5),
           boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 8)],

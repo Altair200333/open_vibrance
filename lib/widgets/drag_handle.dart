@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:open_vibrance/widgets/constants.dart';
 import 'package:window_manager/window_manager.dart';
 
 class DragHandle extends StatefulWidget {
@@ -34,8 +35,8 @@ class _DragHandleState extends State<DragHandle> {
           onExit: (_) => setState(() => _hovering = false),
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 120),
-            width: 20,
-            height: 20,
+            width: kDotSize,
+            height: kDotSize,
             decoration: BoxDecoration(
               color: handleActive ? Colors.blue : Colors.grey.withAlpha(100),
               borderRadius: BorderRadius.circular(8),

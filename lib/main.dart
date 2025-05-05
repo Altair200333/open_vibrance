@@ -3,7 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:open_vibrance/transcription/eleven_labs_transcription_provider.dart';
 import 'package:open_vibrance/utils/clipboard.dart';
-import 'package:open_vibrance/widgets/settings_box.dart';
+import 'package:open_vibrance/widgets/constants.dart';
+import 'package:open_vibrance/widgets/settings_box.dart' show SettingsBox;
 import 'package:window_manager/window_manager.dart';
 import 'package:screen_retriever/screen_retriever.dart';
 import 'package:flutter_acrylic/flutter_acrylic.dart' as acrylic;
@@ -13,14 +14,12 @@ import 'package:flutter/foundation.dart'
     show defaultTargetPlatform, TargetPlatform;
 import 'package:open_vibrance/utils/shortcut_helper.dart';
 import 'package:open_vibrance/widgets/drag_handle.dart';
+import 'package:open_vibrance/widgets/dot_indicator.dart';
 import 'package:record/record.dart';
 import 'dart:io';
 
-const double dotSize = 20;
 const Size initialWindowSize = Size(100, 30);
 const Size expandedWindowSize = Size(600, 600);
-
-enum IndicatorState { idle, hovered, recording, transcribing, expanded }
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -111,15 +110,18 @@ class _DotWindowState extends State<_DotWindow> with WindowListener {
   }
 
   Future<void> _transcribeFile(String path) async {
-    var bytes = await File(path).readAsBytes();
+    // TODO select transcription provider based on settings
     var transcriptionProvider = ElevenLabsTranscriptionProvider();
     try {
       setState(() => _indicatorState = IndicatorState.transcribing);
+      var bytes = await File(path).readAsBytes();
+
       var transcription = await transcriptionProvider.transcribe(bytes);
+
       print('Transcription: $transcription');
 
       await FlutterClipboard.copy(transcription);
-      await Future.delayed(Duration(milliseconds: 50));
+      await Future.delayed(Duration(milliseconds: 100));
       await pasteContent();
     } catch (e) {
       print('Error transcribing file: $e');
@@ -146,20 +148,21 @@ class _DotWindowState extends State<_DotWindow> with WindowListener {
     _audioRecorder = null;
   }
 
+  bool _canStartRecording() {
+    return _indicatorState == IndicatorState.idle ||
+        _indicatorState == IndicatorState.hovered;
+  }
+
   void _onStartRecording() {
-    if (_indicatorState != IndicatorState.idle &&
-        _indicatorState != IndicatorState.hovered) {
+    if (!_canStartRecording()) {
       return;
     }
-    print('onStartRecording');
     setState(() => _indicatorState = IndicatorState.recording);
 
     _startRecording();
   }
 
   void _onStopRecording() {
-    print('onStopRecording');
-
     _stopRecording();
   }
 
@@ -183,8 +186,8 @@ class _DotWindowState extends State<_DotWindow> with WindowListener {
     // 1. get primary display geometry
     final display = await screenRetriever.getPrimaryDisplay();
     final offset = Offset(
-      display.size.width / 2 - dotSize / 2,
-      display.size.height / 2 - dotSize / 2,
+      display.size.width / 2 - kDotSize / 2,
+      display.size.height / 2 - kDotSize / 2,
     );
 
     // 2. configure window options
@@ -283,25 +286,28 @@ class _DotWindowState extends State<_DotWindow> with WindowListener {
   Rect _getWindowBounds(Offset currentPosition, bool isExpanded) {
     Size newSize;
     Offset newPosition;
+
+    // calculate new position and size of the window with adjusted alignment in mind
+    // to avoid jumping
     if (isExpanded) {
-      // collapse window
+      // collapse window, indicator is in the center of the window
       newPosition = Offset(
         currentPosition.dx,
         currentPosition.dy +
             expandedWindowSize.height -
             initialWindowSize.height * 0.5 -
-            dotSize +
+            kDotSize +
             4, // hacky offset to avoid jumping
       );
       newSize = initialWindowSize;
     } else {
-      // expand window
+      // expand window, indicator is in the bottom of the window
       newPosition = Offset(
         currentPosition.dx,
         currentPosition.dy +
             initialWindowSize.height * 0.5 -
             expandedWindowSize.height +
-            dotSize -
+            kDotSize -
             3.5, // hacky offset to avoid jumping
       );
       newSize = expandedWindowSize;
@@ -381,160 +387,6 @@ class _DotWindowState extends State<_DotWindow> with WindowListener {
             if (_settingsBoxVisible)
               SettingsBox(expandedWindowSize: expandedWindowSize),
           ],
-        ),
-      ),
-    );
-  }
-}
-
-// Extracted DotIndicator widget
-class DotIndicator extends StatelessWidget {
-  final IndicatorState state;
-  final VoidCallback onTap;
-  final PointerEnterEventListener onEnter;
-  final PointerExitEventListener onExit;
-  final PointerHoverEventListener onHover;
-
-  const DotIndicator({
-    super.key,
-    required this.state,
-    required this.onTap,
-    required this.onEnter,
-    required this.onExit,
-    required this.onHover,
-  });
-
-  double get _indicatorDotWidth {
-    switch (state) {
-      case IndicatorState.recording:
-        return dotSize;
-      case IndicatorState.transcribing:
-        return dotSize;
-      case IndicatorState.expanded:
-        return dotSize;
-      case IndicatorState.hovered:
-        return dotSize * 2.5;
-      case IndicatorState.idle:
-      default:
-        return dotSize * 2;
-    }
-  }
-
-  double get _indicatorDotHeight {
-    switch (state) {
-      case IndicatorState.recording:
-        return dotSize;
-      case IndicatorState.transcribing:
-        return dotSize;
-      case IndicatorState.expanded:
-        return dotSize;
-      case IndicatorState.hovered:
-        return dotSize;
-      case IndicatorState.idle:
-      default:
-        return dotSize * 0.5;
-    }
-  }
-
-  BoxDecoration get _indicatorDotDecoration {
-    switch (state) {
-      case IndicatorState.recording:
-        return BoxDecoration(
-          color: Colors.red,
-          borderRadius: BorderRadius.circular(dotSize),
-          border: Border.all(color: Colors.white, width: 2),
-        );
-      case IndicatorState.transcribing:
-        return BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(dotSize),
-          border: Border.all(color: Colors.blue, width: 2),
-        );
-      case IndicatorState.expanded:
-        return BoxDecoration(
-          color: Colors.blue,
-          borderRadius: BorderRadius.circular(dotSize),
-          border: Border.all(color: Colors.white, width: 2),
-        );
-      case IndicatorState.hovered:
-        return BoxDecoration(
-          color: Colors.blue,
-          borderRadius: BorderRadius.circular(5),
-        );
-      case IndicatorState.idle:
-      default:
-        return BoxDecoration(
-          color: Colors.grey.withAlpha(120),
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: Colors.white70, width: 1.5),
-        );
-    }
-  }
-
-  Widget? get _indicatorDotContent {
-    switch (state) {
-      case IndicatorState.recording:
-      case IndicatorState.transcribing:
-        return null;
-      case IndicatorState.expanded:
-        return Icon(Icons.close, color: Colors.white, size: dotSize * 0.65);
-      case IndicatorState.hovered:
-      case IndicatorState.idle:
-      default:
-        return AnimatedOpacity(
-          opacity: state == IndicatorState.hovered ? 1.0 : 0.0,
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeInOutCubic,
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              const count = 3;
-              return Row(
-                spacing: 5.0,
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: List.generate(count, (index) {
-                  final size =
-                      state == IndicatorState.hovered
-                          ? dotSize * 0.25
-                          : dotSize * 0.1;
-                  return AnimatedContainer(
-                    duration: const Duration(milliseconds: 200),
-                    width: size,
-                    height: size,
-                    decoration: const BoxDecoration(
-                      color: Colors.white,
-                      shape: BoxShape.circle,
-                    ),
-                  );
-                }),
-              );
-            },
-          ),
-        );
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: MouseRegion(
-        cursor: SystemMouseCursors.click,
-        onEnter: onEnter,
-        onExit: onExit,
-        onHover: onHover,
-        child: SizedBox(
-          width: dotSize * 2.5,
-          height: dotSize,
-          child: Center(
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 180),
-              curve: Curves.easeInOutCubic,
-              width: _indicatorDotWidth,
-              height: _indicatorDotHeight,
-              decoration: _indicatorDotDecoration,
-              child: _indicatorDotContent,
-            ),
-          ),
         ),
       ),
     );
