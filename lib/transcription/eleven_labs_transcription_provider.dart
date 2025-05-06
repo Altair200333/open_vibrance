@@ -16,7 +16,7 @@ enum ElevenLabsModel {
 
 /// Implementation of [TranscriptionService] using ElevenLabs Speech-to-Text API.
 class ElevenLabsTranscriptionProvider implements TranscriptionProvider {
-  final ElevenLabsModel model = ElevenLabsModel.scribeV1;
+  final ElevenLabsModel model = ElevenLabsModel.scribeV1Experimental;
 
   ElevenLabsTranscriptionProvider();
 

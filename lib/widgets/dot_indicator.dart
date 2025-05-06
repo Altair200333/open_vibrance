@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:open_vibrance/theme/app_colors.dart';
 import 'package:open_vibrance/widgets/constants.dart';
 
 enum IndicatorState { idle, recording, transcribing, expanded }
@@ -81,37 +82,28 @@ class DotIndicator extends StatefulWidget {
       case IndicatorState.recording:
         var borderW = 1 + _getNormalizedVolume() * 2;
         return BoxDecoration(
-          color: Colors.red,
+          color: AppColors.red500,
           borderRadius: BorderRadius.circular(kDotSize),
           border: Border.all(color: Colors.white, width: borderW),
         );
       case IndicatorState.transcribing:
         return BoxDecoration(
-          color: Colors.black12,
+          color: AppColors.blue500,
           borderRadius: BorderRadius.circular(5),
           border: Border.all(color: Colors.white, width: 2),
         );
       case IndicatorState.expanded:
         return BoxDecoration(
-          color: Colors.black54,
+          color: AppColors.blue500,
           borderRadius: BorderRadius.circular(kDotSize),
           border: Border.all(color: Colors.white, width: 2),
         );
       case IndicatorState.idle:
-        {
-          if (isHovered) {
-            return BoxDecoration(
-              color: Colors.black54,
-              borderRadius: BorderRadius.circular(5),
-              border: Border.all(color: Colors.white, width: 2),
-            );
-          }
-          return BoxDecoration(
-            color: Colors.black38,
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: Colors.white, width: 2),
-          );
-        }
+        return BoxDecoration(
+          color: AppColors.blue500,
+          borderRadius: BorderRadius.circular(isHovered ? 5 : 10),
+          border: Border.all(color: Colors.white, width: 2),
+        );
       default:
         return BoxDecoration(
           color: Colors.grey.withAlpha(120),

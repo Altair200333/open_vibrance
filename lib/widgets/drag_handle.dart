@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:open_vibrance/theme/app_colors.dart';
 import 'package:open_vibrance/widgets/constants.dart';
 import 'package:window_manager/window_manager.dart';
 
@@ -38,7 +39,8 @@ class _DragHandleState extends State<DragHandle> {
             width: kDotSize,
             height: kDotSize,
             decoration: BoxDecoration(
-              color: handleActive ? Colors.blue : Colors.grey.withAlpha(100),
+              color:
+                  handleActive ? AppColors.blue500 : Colors.grey.withAlpha(100),
               borderRadius: BorderRadius.circular(8),
             ),
             child: Stack(

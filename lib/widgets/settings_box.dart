@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:open_vibrance/utils/storage_service.dart';
 import 'package:open_vibrance/transcription/types.dart';
+import 'package:open_vibrance/theme/app_colors.dart';
 
 const double dotSize = 20;
 
@@ -48,10 +49,9 @@ class _SettingsBoxState extends State<SettingsBox> {
         width: widget.expandedWindowSize.width - dotSize * 3,
         height: widget.expandedWindowSize.height - dotSize * 3,
         decoration: BoxDecoration(
-          color: Colors.black54,
-          borderRadius: BorderRadius.circular(10),
+          color: Colors.grey.withAlpha(120),
+          borderRadius: BorderRadius.circular(8),
           border: Border.all(color: Colors.white, width: 2),
-          boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 8)],
         ),
         child: Padding(
           padding: const EdgeInsets.all(16.0),
@@ -84,7 +84,7 @@ class _SettingsBoxState extends State<SettingsBox> {
                   ),
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(8.0),
-                    borderSide: BorderSide(color: Colors.blue, width: 2),
+                    borderSide: BorderSide(color: AppColors.blue500, width: 2),
                   ),
                   contentPadding: EdgeInsets.symmetric(
                     horizontal: 12.0,
