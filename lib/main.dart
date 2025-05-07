@@ -106,10 +106,13 @@ class _DotWindowState extends State<_DotWindow> with WindowListener {
       return;
     }
 
+    final tempDir = Directory.systemTemp;
+    final recordingPath = '${tempDir.path}/last_recording.wav';
+
     // start file recording for debugging
     await recorder.start(
       const RecordConfig(encoder: AudioEncoder.wav),
-      path: 'last_recording.wav',
+      path: recordingPath,
     );
     recorder.onAmplitudeChanged(Duration(milliseconds: 100)).listen((
       amplitude,
