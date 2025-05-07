@@ -23,8 +23,7 @@ class _DragHandleState extends State<DragHandle> {
   @override
   Widget build(BuildContext context) {
     final isVisible = widget.dragging || widget.showWindowContent;
-    final handleActive = _hovering || widget.dragging;
-    var iconSize = handleActive ? 8.0 : 6.0;
+    final isHandleActive = _hovering || widget.dragging;
 
     return AnimatedOpacity(
       opacity: isVisible ? 1.0 : 0.0,
@@ -40,56 +39,70 @@ class _DragHandleState extends State<DragHandle> {
             height: kDotSize,
             decoration: BoxDecoration(
               color:
-                  handleActive ? AppColors.blue500 : Colors.grey.withAlpha(100),
+                  isHandleActive
+                      ? AppColors.blue500
+                      : Colors.grey.withAlpha(100),
               borderRadius: BorderRadius.circular(8),
             ),
             child: Stack(
               alignment: Alignment.center,
               children: [
-                AnimatedAlign(
-                  duration: const Duration(milliseconds: 120),
-                  alignment:
-                      handleActive ? Alignment.topCenter : Alignment(0, -0.7),
-                  child: Icon(
-                    Icons.keyboard_arrow_up,
-                    size: iconSize,
-                    color: handleActive ? Colors.white : Colors.black,
-                  ),
+                _DragArrow(
+                  isHandleActive: isHandleActive,
+                  icon: Icons.keyboard_arrow_up,
+                  activeAlignment: Alignment.topCenter,
+                  inactiveAlignment: Alignment(0, -0.7),
                 ),
-                AnimatedAlign(
-                  duration: const Duration(milliseconds: 120),
-                  alignment:
-                      handleActive ? Alignment.bottomCenter : Alignment(0, 0.7),
-                  child: Icon(
-                    Icons.keyboard_arrow_down,
-                    size: iconSize,
-                    color: handleActive ? Colors.white : Colors.black,
-                  ),
+                _DragArrow(
+                  isHandleActive: isHandleActive,
+                  icon: Icons.keyboard_arrow_down,
+                  activeAlignment: Alignment.bottomCenter,
+                  inactiveAlignment: Alignment(0, 0.7),
                 ),
-                AnimatedAlign(
-                  duration: const Duration(milliseconds: 120),
-                  alignment:
-                      handleActive ? Alignment.centerLeft : Alignment(-0.7, 0),
-                  child: Icon(
-                    Icons.keyboard_arrow_left,
-                    size: iconSize,
-                    color: handleActive ? Colors.white : Colors.black,
-                  ),
+                _DragArrow(
+                  isHandleActive: isHandleActive,
+                  icon: Icons.keyboard_arrow_left,
+                  activeAlignment: Alignment.centerLeft,
+                  inactiveAlignment: Alignment(-0.7, 0),
                 ),
-                AnimatedAlign(
-                  duration: const Duration(milliseconds: 120),
-                  alignment:
-                      handleActive ? Alignment.centerRight : Alignment(0.7, 0),
-                  child: Icon(
-                    Icons.keyboard_arrow_right,
-                    size: iconSize,
-                    color: handleActive ? Colors.white : Colors.black,
-                  ),
+                _DragArrow(
+                  isHandleActive: isHandleActive,
+                  icon: Icons.keyboard_arrow_right,
+                  activeAlignment: Alignment.centerRight,
+                  inactiveAlignment: Alignment(0.7, 0),
                 ),
               ],
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _DragArrow extends StatelessWidget {
+  final bool isHandleActive;
+  final IconData icon;
+  final Alignment activeAlignment;
+  final Alignment inactiveAlignment;
+
+  const _DragArrow({
+    super.key,
+    required this.isHandleActive,
+    required this.icon,
+    required this.activeAlignment,
+    required this.inactiveAlignment,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedAlign(
+      duration: const Duration(milliseconds: 120),
+      alignment: isHandleActive ? activeAlignment : inactiveAlignment,
+      child: Icon(
+        icon,
+        size: isHandleActive ? 8.0 : 6.0,
+        color: isHandleActive ? Colors.white : Colors.black,
       ),
     );
   }
