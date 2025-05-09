@@ -2,7 +2,7 @@
 
 **Quick minimalistic transcription overlay**
 
-![Placeholder for GIF/Screenshot](paste images)
+<img src="./imgs/demo.gif" alt="Demo" width="100" />
 
 Open Vibrance is a simple desktop overlay that transcribes the speech. Hit a shortcut, speak out, and turn you words into text—copied to the clipboard and pasted right into the app you're currently using. 
 Currently is is using
