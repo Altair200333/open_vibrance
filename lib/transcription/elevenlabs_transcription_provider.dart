@@ -5,6 +5,7 @@ import 'package:http_parser/http_parser.dart';
 import 'package:open_vibrance/transcription/transcription_provider.dart';
 import 'package:open_vibrance/transcription/types.dart';
 import 'package:open_vibrance/services/storage_service.dart';
+import 'package:open_vibrance/utils/common.dart';
 
 enum ElevenLabsModel {
   scribeV1('scribe_v1'),
@@ -49,7 +50,7 @@ class ElevenLabsTranscriptionProvider implements TranscriptionProvider {
       StorageKey.elevenLabsApiKey.key,
     );
     final model = await _loadModel();
-    print('Running transcription with model: $model');
+    dprint('Running transcription with model: $model');
 
     if (apiKey == null) {
       throw Exception('ElevenLabs API key not found');

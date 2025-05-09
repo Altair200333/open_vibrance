@@ -1,6 +1,8 @@
 import 'dart:io';
+import 'package:open_vibrance/transcription/custom_transcription_provider.dart';
+import 'package:open_vibrance/transcription/openai_transcription_provider.dart';
 import 'package:open_vibrance/transcription/transcription_provider.dart';
-import 'package:open_vibrance/transcription/eleven_labs_transcription_provider.dart';
+import 'package:open_vibrance/transcription/elevenlabs_transcription_provider.dart';
 import 'package:open_vibrance/services/storage_service.dart';
 import 'package:clipboard/clipboard.dart';
 import 'package:open_vibrance/utils/clipboard.dart';
@@ -32,8 +34,11 @@ class TranscriptionService {
     switch (providerKey) {
       case TranscriptionProviderKey.elevenlabs:
         return ElevenLabsTranscriptionProvider();
-      case TranscriptionProviderKey.whisper:
+      case TranscriptionProviderKey.openai:
+        return OpenAITranscriptionProvider();
       case TranscriptionProviderKey.custom:
+        return CustomTranscriptionProvider();
+      default:
         throw UnimplementedError('$providerKey provider not implemented');
     }
   }
