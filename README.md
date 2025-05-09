@@ -2,35 +2,51 @@
 
 **Quick minimalistic transcription overlay**
 
-<img src="./imgs/demo.gif" alt="Demo" width="100" />
+<img src="./imgs/demo.gif" alt="Demo" width="120" />
 
-Open Vibrance is a simple desktop overlay that transcribes the speech. Hit a shortcut, speak out, and turn you words into text—copied to the clipboard and pasted right into the app you're currently using. 
-Currently is is using
-- *Elevenlabs* scribe model
-- _*TODO*_ - *OpenAI* whisper
+
+Open Vibrance is a simple desktop overlay that transcribes your speech. Hit a hotkey, speak, and your words are converted to text—copied to your clipboard and pasted directly into the app you're using.
+
+Currently uses:
+- *Elevenlabs* Scribe model
+- _*TODO*_ - *OpenAI* Whisper support
 
 ## Ideal for
-- 🎧 **Vibe coding** – Turn your thoughts into coding prompts
-- 🚀 **Prompt crafting** – Speak out your prompts on-the-fly
-- 💬 **Messaging** – Quickly reply to messages
-- 📝 **Note-taking** – Keep the flow state while taking the notes
+- 🎧 **Coding** – Dictate comments, ideas, or quick (or not quick) coding prompts.
+- 🚀 **AI Prompting** – Craft your AI prompts quickly by speaking them out.
+- 💬 **Messaging** – Send fast replies in your chat apps.
+- 📝 **Note-taking** – Jot down thoughts without breaking your workflow.
 
 ## Main Features
-- 💰 **Free** (kind of): no subscriptions or limits in the app, works with your own API key
-- 🎙️ **Easy-to-use:** Start and stop recording with a single keystroke
-- ⚡ **Precise transcription:** Uses lates and greatest Elevenlabs model
-- 📋 **Automatic text paste:** Transcribed note instantly appears in your active app and is also copied to your clipboard. 
-- 📌 **Minimal UI:** Just one simple overlay indicator dot that stays on top and can be moved around
-- 🌐 **Cross-platform:** Built with Flutter, Open Vibrance runs smoothly on Windows, macOS, and Linux (at least i hope so, tested only on windows 😅)
+- 💰 **Kind of free xD:** The app itself is free. You use your own Elevenlabs API key (Elevenlabs may charge for API usage/subscriptions).
+- 🎙️ **Easy Hotkey Control:** Start and stop recording with a single hotkey.
+- ⚡ **Accurate Transcription:** Powered by the Elevenlabs Scribe model.
+- 📋 **Automatic Paste & Clipboard:** Transcribed text is instantly pasted into your active app and also available on your clipboard.
+- 📌 **Minimal UI:** A small, draggable overlay dot shows recording status and stays out of your way.
+- 🌐 **Cross-platform (mostly):** Built with Flutter. 
+  - Runs on Windows, macOS, and Linux (at least, that's the goal! Tested on Windows 😅. Help with testing on macOS/Linux is welcome!).
 
 ## How to use
-1. Make Elevenlabs account and create API key (you will have to get cheapers subscription)
-2. Click the dot indicator and paste API key
-3. **Press the hotkey (`Alt+Q`)** to start recording. Release the keys when done speaking
-4. **Done!** Your transcription appears in your active app and is copied to your clipboard.
+1.  **Get an Elevenlabs API Key:**
+    *   Sign up at [Elevenlabs](https://elevenlabs.io/) (or your preferred provider if more are supported later).
+    *   You'll likely need a subscription that includes API access for their Scribe model to get an API key.
+2.  **Add API Key to Open Vibrance:** Click the overlay dot and paste your API key into the settings.
+3.  **Record:** Press and hold the hotkey (`Alt+Q` by default) to start recording. Release the keys when you're done speaking.
+4.  **Done!** Your transcription appears in your active app and is copied to your clipboard.
 
-## How to set up
-- **For developers (building from source):**
-    - Make sure you have Flutter installed.
-    - Clone this repository and run `flutter pub get`.
-    - Launch the app with the command: `flutter run windows` (replace `windows` with your platform: `macos` or `linux`).
+## How to set up (Building from source)
+- **For developers:**
+    1.  Make sure you have the [Flutter SDK](https://flutter.dev/docs/get-started/install) installed.
+    2.  Clone this repository:
+        ```bash
+        git clone https://github.com/Altair200333/open_vibrance
+        cd open-vibrance
+        ```
+    3.  Get dependencies:
+        ```bash
+        flutter pub get
+        ```
+    4.  Run the app (replace `windows` with `macos` or `linux`):
+        ```bash
+        flutter run -d windows
+        ```
