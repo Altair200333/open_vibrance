@@ -14,17 +14,42 @@ enum ElevenLabsModel {
   const ElevenLabsModel(this.modelId);
 }
 
+extension ElevenLabsModelExtension on ElevenLabsModel {
+  String get displayName {
+    switch (this) {
+      case ElevenLabsModel.scribeV1:
+        return 'Scribe v1';
+      case ElevenLabsModel.scribeV1Experimental:
+        return 'Scribe v1 Experimental';
+    }
+  }
+
+  static ElevenLabsModel fromKey(String? key) {
+    return ElevenLabsModel.values.firstWhere(
+      (e) => e.modelId == key,
+      orElse: () => ElevenLabsModel.scribeV1Experimental,
+    );
+  }
+}
+
 /// Implementation of [TranscriptionService] using ElevenLabs Speech-to-Text API.
 class ElevenLabsTranscriptionProvider implements TranscriptionProvider {
-  final ElevenLabsModel model = ElevenLabsModel.scribeV1Experimental;
-
   ElevenLabsTranscriptionProvider();
+
+  Future<ElevenLabsModel> _loadModel() async {
+    final modelId = await SecureStorageService().readValue(
+      StorageKey.elevenLabsModel.key,
+    );
+    return ElevenLabsModelExtension.fromKey(modelId);
+  }
 
   @override
   Future<String> transcribe(Uint8List audioBytes) async {
     final apiKey = await SecureStorageService().readValue(
-      ApiKey.elevenLabs.key,
+      StorageKey.elevenLabsApiKey.key,
     );
+    final model = await _loadModel();
+    print('Running transcription with model: $model');
 
     if (apiKey == null) {
       throw Exception('ElevenLabs API key not found');

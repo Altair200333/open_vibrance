@@ -1,6 +1,4 @@
 import 'dart:async';
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:open_vibrance/services/transcription_service.dart';
@@ -9,9 +7,6 @@ import 'package:screen_retriever/screen_retriever.dart';
 import 'package:window_manager/window_manager.dart';
 import 'package:flutter_acrylic/flutter_acrylic.dart' as acrylic;
 import 'package:hotkey_manager/hotkey_manager.dart';
-import 'package:clipboard/clipboard.dart';
-import 'package:open_vibrance/transcription/eleven_labs_transcription_provider.dart';
-import 'package:open_vibrance/utils/clipboard.dart';
 import 'package:open_vibrance/utils/shortcut_helper.dart';
 import 'package:open_vibrance/services/audio_service.dart';
 import 'package:open_vibrance/widgets/drag_handle.dart';
@@ -93,6 +88,10 @@ class _DotWindowState extends State<DotWindow> with WindowListener {
   }
 
   Future<void> _stopRecording() async {
+    if (!_canStopRecording()) {
+      dprint('Not recording, cant stop');
+      return;
+    }
     final path = await _audioService.stop();
     if (path != null) {
       await _transcribeFile(path);
@@ -103,8 +102,12 @@ class _DotWindowState extends State<DotWindow> with WindowListener {
 
   bool _canStartRecording() => _indicatorState == IndicatorState.idle;
 
+  bool _canStopRecording() => _indicatorState == IndicatorState.recording;
+
   void _onStartRecording() {
-    if (!_canStartRecording()) return;
+    if (!_canStartRecording()) {
+      return;
+    }
     setState(() => _indicatorState = IndicatorState.recording);
     _startRecording();
   }
@@ -122,7 +125,9 @@ class _DotWindowState extends State<DotWindow> with WindowListener {
 
   @override
   void onWindowMove() {
-    if (!_dragging) setState(() => _dragging = true);
+    if (!_dragging) {
+      setState(() => _dragging = true);
+    }
   }
 
   Future<void> _initWindow() async {
@@ -141,13 +146,16 @@ class _DotWindowState extends State<DotWindow> with WindowListener {
       skipTaskbar: true,
       alwaysOnTop: true,
     );
+
     await windowManager.waitUntilReadyToShow(options, () async {
       await windowManager.setHasShadow(false);
       await windowManager.setPosition(offset);
       await windowManager.setIgnoreMouseEvents(false);
       await windowManager.setAlwaysOnTop(true);
-      windowManager.addListener(this);
       await windowManager.setAsFrameless();
+
+      windowManager.addListener(this);
+
       await acrylic.Window.setEffect(
         effect: acrylic.WindowEffect.transparent,
         color: Colors.transparent,
@@ -213,6 +221,10 @@ class _DotWindowState extends State<DotWindow> with WindowListener {
   }
 
   Rect _getWindowBounds(Offset currentPosition, bool isExpanded) {
+    // pretty hacky way, but it got it working
+    // idea is to keep the main indicator in the same spot on the screen while chaning size and position of the window itself
+    // it has to account for borders, alignment, dot size and arbitrary constant offset
+
     Size newSize;
     Offset newPosition;
     if (isExpanded) {
@@ -246,29 +258,48 @@ class _DotWindowState extends State<DotWindow> with WindowListener {
 
   Future<void> _handleToggleSettingsBox() async {
     var currentPosition = await windowManager.getPosition();
+
     var isExpanded = _indicatorState == IndicatorState.expanded;
     var bounds = _getWindowBounds(currentPosition, isExpanded);
+
     setState(() => _settingsBoxVisible = !isExpanded);
+
+    // add small delay between showing settings box and resizing window
+    // to prevent settings box from flickering
     await Future.delayed(const Duration(milliseconds: 50));
+
+    // also ideally there should be delay + subtle animation to hide "jumping" of the indicator dot itself
     windowManager.setMinimumSize(bounds.size);
     windowManager.setMaximumSize(bounds.size);
     windowManager.setBounds(bounds);
+
+    _toggleIndicatorExpandedState();
+  }
+
+  void _toggleIndicatorExpandedState() {
+    var isExpanded = _indicatorState == IndicatorState.expanded;
     var newState = isExpanded ? IndicatorState.idle : IndicatorState.expanded;
+
     setState(() => _indicatorState = newState);
   }
 
+  bool _canToggleSettingsBox() {
+    return _indicatorState == IndicatorState.idle ||
+        _indicatorState == IndicatorState.expanded;
+  }
+
   void onIndicatorTap() {
-    if (_indicatorState == IndicatorState.recording ||
-        _indicatorState == IndicatorState.transcribing) {
+    if (!_canToggleSettingsBox()) {
       return;
     }
     _handleToggleSettingsBox();
   }
 
-  AlignmentGeometry get _indicatorAlignment =>
-      _indicatorState == IndicatorState.expanded
-          ? Alignment.bottomCenter
-          : Alignment.center;
+  AlignmentGeometry get _indicatorAlignment {
+    return _indicatorState == IndicatorState.expanded
+        ? Alignment.bottomCenter
+        : Alignment.center;
+  }
 
   @override
   Widget build(BuildContext context) {

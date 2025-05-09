@@ -5,6 +5,7 @@ import 'package:open_vibrance/services/storage_service.dart';
 import 'package:clipboard/clipboard.dart';
 import 'package:open_vibrance/utils/clipboard.dart';
 import 'package:open_vibrance/utils/common.dart';
+import 'package:open_vibrance/transcription/types.dart';
 
 class TranscriptionService {
   final SecureStorageService _storageService;
@@ -12,22 +13,28 @@ class TranscriptionService {
   TranscriptionService([SecureStorageService? storage])
     : _storageService = storage ?? SecureStorageService();
 
-  Future<String> _getSelectedProvider() async {
-    final providerKey = await _storageService.readValue(
+  Future<TranscriptionProviderKey> _getSelectedProvider() async {
+    final storedValue = await _storageService.readValue(
       'transcription_provider',
     );
-
-    return providerKey ?? 'elevenlabs';
+    if (storedValue == null) {
+      return TranscriptionProviderKey.elevenlabs;
+    }
+    return TranscriptionProviderKey.values.firstWhere(
+      (p) => p.key == storedValue,
+      orElse: () => TranscriptionProviderKey.elevenlabs,
+    );
   }
 
   Future<TranscriptionProvider> _getProvider() async {
     final providerKey = await _getSelectedProvider();
 
     switch (providerKey) {
-      case 'elevenlabs':
+      case TranscriptionProviderKey.elevenlabs:
         return ElevenLabsTranscriptionProvider();
-      default:
-        throw Exception('Unknown transcription provider: $providerKey');
+      case TranscriptionProviderKey.whisper:
+      case TranscriptionProviderKey.custom:
+        throw UnimplementedError('$providerKey provider not implemented');
     }
   }
 
@@ -37,7 +44,10 @@ class TranscriptionService {
     final transcription = await provider.transcribe(bytes);
 
     dprint('Transcription: $transcription');
+
     await FlutterClipboard.copy(transcription);
+
+    // wait for it to settle in clipboard for a sec and call paste event
     await Future.delayed(const Duration(milliseconds: 100));
     await pasteContent();
   }
