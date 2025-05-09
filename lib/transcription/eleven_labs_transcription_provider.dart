@@ -4,7 +4,7 @@ import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
 import 'package:open_vibrance/transcription/transcription_provider.dart';
 import 'package:open_vibrance/transcription/types.dart';
-import 'package:open_vibrance/utils/storage_service.dart';
+import 'package:open_vibrance/services/storage_service.dart';
 
 enum ElevenLabsModel {
   scribeV1('scribe_v1'),

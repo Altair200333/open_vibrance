@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:open_vibrance/utils/storage_service.dart';
+import 'package:open_vibrance/services/storage_service.dart';
 import 'package:open_vibrance/transcription/types.dart';
 import 'package:open_vibrance/theme/app_colors.dart';
 

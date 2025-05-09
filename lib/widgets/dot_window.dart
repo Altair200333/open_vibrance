@@ -3,6 +3,8 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:open_vibrance/services/transcription_service.dart';
+import 'package:open_vibrance/utils/common.dart';
 import 'package:screen_retriever/screen_retriever.dart';
 import 'package:window_manager/window_manager.dart';
 import 'package:flutter_acrylic/flutter_acrylic.dart' as acrylic;
@@ -40,6 +42,7 @@ class _DotWindowState extends State<DotWindow> with WindowListener {
   double _lastAmplitude = 0;
 
   final ShortcutHelper _shortcutHelper = ShortcutHelper();
+  final TranscriptionService _transcriptionService = TranscriptionService();
 
   @override
   void initState() {
@@ -55,7 +58,7 @@ class _DotWindowState extends State<DotWindow> with WindowListener {
   }
 
   Future<void> _registerHotKeys() async {
-    print('Registering hotkeys for ${defaultTargetPlatform}');
+    dprint('Registering hotkeys for $defaultTargetPlatform');
     HotKey hotKey = HotKey(
       key: PhysicalKeyboardKey.keyQ,
       modifiers: [HotKeyModifier.alt],
@@ -72,23 +75,18 @@ class _DotWindowState extends State<DotWindow> with WindowListener {
     try {
       await _audioService.start();
     } catch (e) {
-      print('Recording failed: $e');
+      dprint('Recording failed: $e');
       setState(() => _indicatorState = IndicatorState.idle);
     }
   }
 
   Future<void> _transcribeFile(String path) async {
-    var transcriptionProvider = ElevenLabsTranscriptionProvider();
     try {
       setState(() => _indicatorState = IndicatorState.transcribing);
-      var bytes = await File(path).readAsBytes();
-      var transcription = await transcriptionProvider.transcribe(bytes);
-      print('Transcription: $transcription');
-      await FlutterClipboard.copy(transcription);
-      await Future.delayed(Duration(milliseconds: 100));
-      await pasteContent();
+
+      await _transcriptionService.transcribeFileAndPaste(path);
     } catch (e) {
-      print('Error transcribing file: $e');
+      dprint('Error transcribing file: $e');
     } finally {
       setState(() => _indicatorState = IndicatorState.idle);
     }
