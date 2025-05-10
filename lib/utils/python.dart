@@ -68,18 +68,17 @@ Future<String> runPythonScript(String pythonExe, String script) async {
   await tempFile.writeAsString(script, flush: true);
 
   try {
-    // 2. run python on that file
-    final result = await Process.run(
-      pythonExe,
-      ['-u', tempFile.path],
-      stdoutEncoding: utf8,
-      stderrEncoding: utf8,
-    );
+    // 2. run python on that file and get raw bytes for manual decoding
+    final result = await Process.run(pythonExe, ['-u', tempFile.path]);
 
+    // handle non-zero exit codes by decoding stderr with replacement
     if (result.exitCode != 0) {
-      throw Exception('Python code ${result.exitCode}: ${result.stderr}');
+      final stderrBytes = result.stderr as List<int>;
+      final stderrOutput = utf8.decode(stderrBytes, allowMalformed: true);
+      throw Exception('Python code ${result.exitCode}: $stderrOutput');
     }
-    return result.stdout as String;
+
+    return result.stdout;
   } catch (e) {
     dprint("failed to run python script: $e");
     rethrow;
