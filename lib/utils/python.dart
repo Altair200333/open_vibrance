@@ -59,11 +59,12 @@ Future<String> runPythonScript2(String pythonExe, String script) async {
 }
 
 Future<String> runPythonScript(String pythonExe, String script) async {
-  // 1. create a temporary *.py file
   final tempDir = Directory.systemTemp;
-  final tempFile = File(
-    Path.join(tempDir.path, 'user_${DateTime.now().millisecondsSinceEpoch}.py'),
+  var tempPath = Path.join(
+    tempDir.path,
+    'user_${DateTime.now().millisecondsSinceEpoch}.py',
   );
+  final tempFile = File(tempPath);
   await tempFile.create();
   await tempFile.writeAsString(script, flush: true);
 

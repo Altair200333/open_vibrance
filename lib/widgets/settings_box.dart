@@ -408,22 +408,54 @@ class _SettingsBoxState extends State<SettingsBox> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Custom JavaScript', style: TextStyle(color: Colors.white)),
+        Text('Custom Python code', style: TextStyle(color: Colors.white)),
         SizedBox(height: 8),
-        Text(
-          'Enter custom JavaScript code to be executed for transcription.\n\n- It should read audio from global variable `audio` which is a base64 audio.\n- The code should return final transcription as a string.',
-          style: TextStyle(color: Colors.white54, fontSize: 12),
+        Text.rich(
+          TextSpan(
+            style: TextStyle(color: Colors.white54, fontSize: 12),
+            children: [
+              TextSpan(
+                text:
+                    'Enter custom Python code to be executed for transcription.\n\n',
+              ),
+              TextSpan(
+                text: '- Make sure you have python installed in the system\n',
+              ),
+              TextSpan(
+                text: '- The script should read audio from global variable ',
+              ),
+              TextSpan(
+                text: 'base64_audio',
+                style: TextStyle(
+                  color: AppColors.blue300,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              TextSpan(text: ' which is a base64 encoded audio\n'),
+              TextSpan(text: '- The code should '),
+              TextSpan(
+                text: 'print',
+                style: TextStyle(
+                  color: AppColors.blue300,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              TextSpan(
+                text: ' final transcription as a string (app will read stdout)',
+              ),
+            ],
+          ),
         ),
         SizedBox(height: 8),
         Text(
-          'If unsure what this means, just paste docs from your transcription provider into ChatGPT and ask to write JS snippet accepting base64 audio and returning a string from it',
+          'If unsure what this means, just paste docs from your transcription provider into ChatGPT and ask to write Python snippet accepting base64 audio and returning a string from it',
           style: TextStyle(color: AppColors.blue300, fontSize: 12),
         ),
         SizedBox(height: 16),
         TextField(
           controller: _customJSCodeController,
           decoration: InputDecoration(
-            hintText: 'Plain JavaScript code',
+            hintText: 'Plain Python code',
             hintStyle: TextStyle(color: Colors.white54),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(8.0),
