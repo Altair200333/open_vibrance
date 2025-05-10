@@ -100,7 +100,7 @@ class _SettingsBoxState extends State<SettingsBox> {
 
   Future<void> _loadCustomJSCode() async {
     final code = await SecureStorageService().readValue(
-      StorageKey.customJSCode.key,
+      StorageKey.customPythonScript.key,
     );
     if (code != null) {
       _customJSCodeController.text = code;
@@ -165,7 +165,7 @@ class _SettingsBoxState extends State<SettingsBox> {
   }
 
   void _onCustomJSCodeChanged(String value) {
-    SecureStorageService().saveValue(StorageKey.customJSCode.key, value);
+    SecureStorageService().saveValue(StorageKey.customPythonScript.key, value);
   }
 
   @override
@@ -445,7 +445,7 @@ class _SettingsBoxState extends State<SettingsBox> {
           style: TextStyle(color: Colors.white),
           onChanged: _onCustomJSCodeChanged,
           minLines: 5,
-          maxLines: 10,
+          maxLines: 300,
           keyboardType: TextInputType.multiline,
         ),
       ],

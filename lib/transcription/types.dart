@@ -5,7 +5,7 @@ enum StorageKey {
   openAiApiKey('openai_api_key'),
   openAiModel('openai_model'),
   openAiPrompt('openai_prompt'),
-  customJSCode('custom_js_code');
+  customPythonScript('custom_python_script');
 
   final String key;
   const StorageKey(this.key);
