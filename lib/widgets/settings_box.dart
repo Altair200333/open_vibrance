@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:open_vibrance/theme/app_colors.dart';
 import 'package:open_vibrance/widgets/constants.dart';
 import 'package:open_vibrance/widgets/provider_settings/transcription_provider_configuration_view.dart';
+import 'package:open_vibrance/widgets/provider_settings/hotkeys_settings_view.dart';
 
 class SettingsItem {
   final String title;
@@ -32,6 +33,10 @@ class _SettingsBoxState extends State<SettingsBox> {
       SettingsItem(
         title: 'Transcription Provider',
         viewBuilder: (context) => TranscriptionProviderConfigurationView(),
+      ),
+      SettingsItem(
+        title: 'Hotkeys',
+        viewBuilder: (context) => HotkeysSettingsView(),
       ),
     ];
   }
