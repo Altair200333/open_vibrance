@@ -31,9 +31,7 @@ class _TranscriptionProviderConfigurationViewState
     );
     if (mounted) {
       setState(() {
-        _selectedProvider =
-            TranscriptionProviderKeyExtension.fromKey(key) ??
-            TranscriptionProviderKey.elevenlabs;
+        _selectedProvider = TranscriptionProviderKeyExtension.fromKey(key);
       });
     }
   }

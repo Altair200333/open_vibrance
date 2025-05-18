@@ -3,6 +3,8 @@ import 'package:open_vibrance/theme/app_colors.dart';
 import 'package:open_vibrance/widgets/constants.dart';
 import 'package:open_vibrance/widgets/provider_settings/transcription_provider_configuration_view.dart';
 import 'package:open_vibrance/widgets/provider_settings/hotkeys_settings_view.dart';
+import 'package:flutter/services.dart';
+import 'package:hotkey_manager/hotkey_manager.dart';
 
 class SettingsItem {
   final String title;
@@ -12,7 +14,14 @@ class SettingsItem {
 }
 
 class SettingsBox extends StatefulWidget {
-  const SettingsBox({super.key, required this.expandedWindowSize});
+  final void Function(HotKeyModifier modifier, List<PhysicalKeyboardKey> keys)
+  onHotkeyChanged;
+
+  const SettingsBox({
+    super.key,
+    required this.expandedWindowSize,
+    required this.onHotkeyChanged,
+  });
 
   final Size expandedWindowSize;
 
@@ -36,7 +45,9 @@ class _SettingsBoxState extends State<SettingsBox> {
       ),
       SettingsItem(
         title: 'Hotkeys',
-        viewBuilder: (context) => HotkeysSettingsView(),
+        viewBuilder:
+            (context) =>
+                HotkeysSettingsView(onHotkeyChanged: widget.onHotkeyChanged),
       ),
     ];
   }

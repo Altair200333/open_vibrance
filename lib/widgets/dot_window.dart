@@ -14,6 +14,7 @@ import 'package:open_vibrance/widgets/dot_indicator.dart';
 import 'package:open_vibrance/widgets/settings_box.dart' show SettingsBox;
 import 'package:open_vibrance/widgets/constants.dart';
 import 'package:flutter/foundation.dart' show defaultTargetPlatform;
+import 'package:open_vibrance/services/hotkey_repository.dart';
 
 class DotWindow extends StatefulWidget {
   const DotWindow({super.key});
@@ -46,6 +47,7 @@ class _DotWindowState extends State<DotWindow> with WindowListener {
     _initWindow();
 
     _registerHotKeys();
+
     _audioService = AudioService();
     _audioService.addListener(() {
       setState(() => _lastAmplitude = _audioService.amplitude);
@@ -54,16 +56,12 @@ class _DotWindowState extends State<DotWindow> with WindowListener {
 
   Future<void> _registerHotKeys() async {
     dprint('Registering hotkeys for $defaultTargetPlatform');
-    HotKey hotKey = HotKey(
-      key: PhysicalKeyboardKey.keyQ,
-      modifiers: [HotKeyModifier.alt],
-      scope: HotKeyScope.system,
-    );
-    _shortcutHelper.registerHotkey((
-      hotKey: hotKey,
-      onKeyDown: _onStartRecording,
-      onKeyUp: _onStopRecording,
-    ));
+
+    final combo = await HotkeyRepository().readHotkey();
+    final modifier = combo?.modifier ?? HotKeyModifier.alt;
+    final keys = combo?.keys ?? [PhysicalKeyboardKey.keyQ];
+
+    await _applyHotkeyChanges(modifier, keys);
   }
 
   Future<void> _startRecording() async {
@@ -295,6 +293,33 @@ class _DotWindowState extends State<DotWindow> with WindowListener {
     _handleToggleSettingsBox();
   }
 
+  void _onHotkeyChanged(
+    HotKeyModifier modifier,
+    List<PhysicalKeyboardKey> keys,
+  ) {
+    _applyHotkeyChanges(modifier, keys);
+  }
+
+  Future<void> _applyHotkeyChanges(
+    HotKeyModifier modifier,
+    List<PhysicalKeyboardKey> keys,
+  ) async {
+    await _shortcutHelper.init();
+
+    for (var key in keys) {
+      final hotKey = HotKey(
+        key: key,
+        modifiers: [modifier],
+        scope: HotKeyScope.system,
+      );
+      await _shortcutHelper.registerHotkey((
+        hotKey: hotKey,
+        onKeyDown: _onStartRecording,
+        onKeyUp: _onStopRecording,
+      ));
+    }
+  }
+
   AlignmentGeometry get _indicatorAlignment {
     return _indicatorState == IndicatorState.expanded
         ? Alignment.bottomCenter
@@ -332,7 +357,10 @@ class _DotWindowState extends State<DotWindow> with WindowListener {
               ),
             ),
             if (_settingsBoxVisible)
-              SettingsBox(expandedWindowSize: expandedWindowSize),
+              SettingsBox(
+                expandedWindowSize: expandedWindowSize,
+                onHotkeyChanged: _onHotkeyChanged,
+              ),
           ],
         ),
       ),
