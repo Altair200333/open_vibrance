@@ -17,7 +17,7 @@ class HotkeysSettingsView extends StatefulWidget {
 
 class _HotkeysSettingsViewState extends State<HotkeysSettingsView> {
   HotKeyModifier selectedModifier = HotKeyModifier.alt;
-  List<PhysicalKeyboardKey> selectedKeys = [PhysicalKeyboardKey.keyQ];
+  PhysicalKeyboardKey selectedKey = PhysicalKeyboardKey.keyQ;
 
   @override
   void initState() {
@@ -30,16 +30,16 @@ class _HotkeysSettingsViewState extends State<HotkeysSettingsView> {
     if (mounted && combo != null) {
       setState(() {
         selectedModifier = combo.modifier;
-        selectedKeys = combo.keys;
+        if (combo.keys.isNotEmpty) selectedKey = combo.keys.first;
       });
     }
-    widget.onHotkeyChanged(selectedModifier, selectedKeys);
+    widget.onHotkeyChanged(selectedModifier, [selectedKey]);
   }
 
   void _saveAndNotify() {
-    final combo = HotkeyCombo(modifier: selectedModifier, keys: selectedKeys);
+    final combo = HotkeyCombo(modifier: selectedModifier, keys: [selectedKey]);
     HotkeyRepository().saveHotkey(combo);
-    widget.onHotkeyChanged(selectedModifier, selectedKeys);
+    widget.onHotkeyChanged(selectedModifier, [selectedKey]);
   }
 
   @override
@@ -59,120 +59,69 @@ class _HotkeysSettingsViewState extends State<HotkeysSettingsView> {
             ),
           ),
           SizedBox(height: 16),
-          Text(
-            'Modifier',
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 16,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-          SizedBox(height: 4),
-          SizedBox(
-            width: 100,
-            child: DropdownButtonFormField<HotKeyModifier>(
-              decoration: InputDecoration(
-                border: InputBorder.none,
-                contentPadding: EdgeInsets.symmetric(vertical: 4),
-              ),
-              dropdownColor: AppColors.gray700,
-              style: TextStyle(color: Colors.white),
-              iconEnabledColor: Colors.white,
-              value: selectedModifier,
-              items:
-                  modifierLabels.entries
-                      .map(
-                        (entry) => DropdownMenuItem<HotKeyModifier>(
-                          value: entry.key,
-                          child: Text(entry.value),
-                        ),
-                      )
-                      .toList(),
-              onChanged: (modifier) {
-                if (modifier != null) {
-                  setState(() => selectedModifier = modifier);
-                  _saveAndNotify();
-                }
-              },
-            ),
-          ),
-          SizedBox(height: 12),
-          Text(
-            'Keys',
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 16,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-          SizedBox(height: 4),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          Row(
             children: [
-              for (int i = 0; i < selectedKeys.length; i++) ...[
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    SizedBox(
-                      width: 100,
-                      child: DropdownButton<PhysicalKeyboardKey>(
-                        dropdownColor: AppColors.gray700,
-                        style: TextStyle(color: Colors.white),
-                        iconEnabledColor: Colors.white,
-                        underline: SizedBox(),
-                        value: selectedKeys[i],
-                        items:
-                            basicKeyOptions
-                                .map(
-                                  (key) =>
-                                      DropdownMenuItem<PhysicalKeyboardKey>(
-                                        value: key,
-                                        child: Text(key.keyLabel ?? ''),
-                                      ),
-                                )
-                                .toList(),
-                        onChanged: (key) {
-                          if (key != null) {
-                            setState(() => selectedKeys[i] = key);
-                            _saveAndNotify();
-                          }
-                        },
-                      ),
-                    ),
-                    if (selectedKeys.length > 1)
-                      IconButton(
-                        iconSize: 16,
-                        padding: EdgeInsets.zero,
-                        constraints: BoxConstraints(),
-                        icon: Icon(
-                          Icons.close,
-                          color: Colors.white.withOpacity(0.7),
-                        ),
-                        onPressed:
-                            () => setState(() {
-                              selectedKeys.removeAt(i);
-                              _saveAndNotify();
-                            }),
-                      ),
-                  ],
-                ),
-                SizedBox(height: 0),
-              ],
-              ElevatedButton.icon(
-                onPressed:
-                    () => setState(() {
-                      selectedKeys.add(basicKeyOptions.first);
-                      _saveAndNotify();
-                    }),
-                icon: Icon(Icons.add, size: 16, color: Colors.white),
-                label: Text('Add key', style: TextStyle(color: Colors.white)),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.white24,
-                  padding: EdgeInsets.symmetric(horizontal: 8),
-                  minimumSize: Size(32, 32),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
+              SizedBox(
+                width: 100,
+                child: DropdownButtonFormField<HotKeyModifier>(
+                  decoration: InputDecoration(
+                    border: InputBorder.none,
+                    contentPadding: EdgeInsets.symmetric(vertical: 4),
                   ),
+                  dropdownColor: AppColors.gray700,
+                  style: TextStyle(color: Colors.white),
+                  iconEnabledColor: Colors.white,
+                  value: selectedModifier,
+                  items:
+                      modifierLabels.entries
+                          .map(
+                            (entry) => DropdownMenuItem<HotKeyModifier>(
+                              value: entry.key,
+                              child: Text(entry.value),
+                            ),
+                          )
+                          .toList(),
+                  onChanged: (modifier) {
+                    if (modifier != null) {
+                      setState(() => selectedModifier = modifier);
+                      _saveAndNotify();
+                    }
+                  },
+                ),
+              ),
+              SizedBox(width: 16),
+              Container(
+                padding: EdgeInsets.all(4),
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  border: Border.all(color: Colors.transparent, width: 2),
+                ),
+                child: Icon(Icons.add, color: Colors.white, size: 16),
+              ),
+              SizedBox(width: 16),
+              SizedBox(
+                width: 100,
+                child: DropdownButton<PhysicalKeyboardKey>(
+                  dropdownColor: AppColors.gray700,
+                  style: TextStyle(color: Colors.white),
+                  iconEnabledColor: Colors.white,
+                  underline: SizedBox(),
+                  value: selectedKey,
+                  items:
+                      basicKeyOptions
+                          .map(
+                            (key) => DropdownMenuItem<PhysicalKeyboardKey>(
+                              value: key,
+                              child: Text(key.keyLabel ?? ''),
+                            ),
+                          )
+                          .toList(),
+                  onChanged: (key) {
+                    if (key != null) {
+                      setState(() => selectedKey = key);
+                      _saveAndNotify();
+                    }
+                  },
                 ),
               ),
             ],
@@ -203,7 +152,7 @@ class _HotkeysSettingsViewState extends State<HotkeysSettingsView> {
   String _getHotkeyCombination() {
     return HotkeyCombo(
       modifier: selectedModifier,
-      keys: selectedKeys,
+      keys: [selectedKey],
     ).toString();
   }
 }
