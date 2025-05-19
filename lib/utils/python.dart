@@ -35,29 +35,6 @@ Future<String?> findPython() async {
   return null;
 }
 
-Future<String> runPythonScript2(String pythonExe, String script) async {
-  final proc = await Process.start(pythonExe, ['-u', '-'], runInShell: true);
-
-  // send the script and close stdin
-  proc.stdin.writeln(script);
-  await proc.stdin.close();
-
-  final stdoutBuf = StringBuffer();
-  final stderrBuf = StringBuffer();
-
-  // collect the output in runtime
-  proc.stdout.transform(utf8.decoder).listen(stdoutBuf.write);
-  proc.stderr.transform(utf8.decoder).listen(stderrBuf.write);
-
-  final exit = await proc.exitCode;
-
-  if (exit != 0) {
-    var errorBuffer = stderrBuf.toString().trim();
-    throw Exception('Python exited with $exit: $errorBuffer');
-  }
-  return stdoutBuf.toString();
-}
-
 Future<String> runPythonScript(String pythonExe, String script) async {
   final tempDir = Directory.systemTemp;
   var tempPath = Path.join(
@@ -69,7 +46,6 @@ Future<String> runPythonScript(String pythonExe, String script) async {
   await tempFile.writeAsString(script, flush: true);
 
   try {
-    // 2. run python on that file and get raw bytes for manual decoding
     final result = await Process.run(pythonExe, ['-u', tempFile.path]);
 
     // handle non-zero exit codes by decoding stderr with replacement
