@@ -4,7 +4,15 @@
 
 <img src="./imgs/demo.gif" alt="Demo" width="100" />
 
+## Table of Contents
 
+- [About](#-about)
+- [Why is it good?](#-why-is-it-good)
+- [How to use](#-how-to-use)
+  - [Option 1: Use ready API provider](#option-1-use-ready-api-provider)
+  - [Option 2: Custom Python script (make this app immortal)](#option-2-custom-python-script-make-this-app-immortal)
+- [Screenshots](#-screenshots)
+- [How to build](#-how-to-build)
 
 ## 🚀 About
 
@@ -100,7 +108,7 @@ print(resp.json().get('text'))
 <img src="./imgs/dot_processing.jpg" alt="Demo" width="70" />
 
 
-## 🛠️ How to set up (Building from source)
+## 🛠️ How to build
 - **For developers:**
     1.  Make sure you have the [Flutter SDK](https://flutter.dev/docs/get-started/install) installed.
     2.  Clone this repository:
