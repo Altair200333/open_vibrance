@@ -11,7 +11,7 @@
 - [Why is it good?](#-why-is-it-good)
 - [How to use](#-how-to-use)
   - [Option 1: Use ready API provider](#option-1-use-ready-api-provider)
-  - [Option 2: Custom Python script (make this app immortal)](#option-2-custom-python-script-make-this-app-immortal)
+  - [Option 2: Custom Python script](#option-2-custom-python-script-make-this-app-immortal)
 - [Screenshots](#-screenshots)
 - [How to build](#-how-to-build)
 
