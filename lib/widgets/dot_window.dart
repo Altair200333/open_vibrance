@@ -141,7 +141,7 @@ class _DotWindowState extends State<DotWindow> with WindowListener {
       center: false,
       backgroundColor: Colors.transparent,
       titleBarStyle: TitleBarStyle.hidden,
-      skipTaskbar: true,
+      // skipTaskbar: true,
       alwaysOnTop: true,
     );
 
