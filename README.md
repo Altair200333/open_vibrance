@@ -7,6 +7,7 @@
 ## Table of Contents
 
 - [About](#-about)
+- [Download](#-download)
 - [Why is it good?](#-why-is-it-good)
 - [How to use](#-how-to-use)
   - [Option 1: Use ready API provider](#option-1-use-ready-api-provider)
@@ -30,6 +31,10 @@ What can I use it for?
 - 🚀 **AI Prompting** – Craft your AI prompts quickly by speaking them out.
 - 💬 **Messaging** – Send fast replies in your chat apps.
 - 📝 **Note-taking** – Jot down thoughts without breaking your workflow.
+
+## ⏬ Download
+
+Head to [Releases page](https://github.com/Altair200333/open_vibrance/releases) and download __win_64.rar__ file, extract into any location, and run `open_vibrance.exe`
 
 ## 💫 Why is it good?
 - 💰 **Kind of free xD:** The app itself is free. You use your own Elevenlabs/OpenAI API key
