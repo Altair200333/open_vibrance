@@ -1,5 +1,7 @@
 # Open Vibrance
 
+> <img src="imgs/logo.png" align="right"/>
+
 **Quick minimalistic transcription overlay**
 
 <img src="./imgs/demo.gif" alt="Demo" width="100" />
