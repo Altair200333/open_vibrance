@@ -39,7 +39,7 @@ class _DotWindowState extends State<DotWindow> with WindowListener {
   final ShortcutHelper _shortcutHelper = ShortcutHelper();
   final TranscriptionService _transcriptionService = TranscriptionService();
   Timer? _exitDebounce;
-  Offset _trackedPosition = Offset.zero;
+  Size _actualIdleSize = initialWindowSize;
 
   @override
   void initState() {
@@ -114,7 +114,6 @@ class _DotWindowState extends State<DotWindow> with WindowListener {
 
   @override
   void onWindowMoved() async {
-    _trackedPosition = await windowManager.getPosition();
     setState(() {
       _dragging = false;
       _hoveringWindow = true;
@@ -147,13 +146,15 @@ class _DotWindowState extends State<DotWindow> with WindowListener {
       alwaysOnTop: true,
     );
 
-    _trackedPosition = offset;
-
     await windowManager.waitUntilReadyToShow(options, () async {
       await windowManager.setPosition(offset);
       await windowManager.setAlwaysOnTop(true);
       await windowManager.setAsFrameless();
       await windowManager.setHasShadow(false);
+      // Re-apply size: waitUntilReadyToShow calls setSize before setMinimumSize,
+      // so Windows enforces SM_CYMINTRACK (~36px) as minimum height.
+      // Now that minimumSize is set, the correct 30px height is allowed.
+      await windowManager.setSize(initialWindowSize);
 
       windowManager.addListener(this);
 
@@ -241,41 +242,40 @@ class _DotWindowState extends State<DotWindow> with WindowListener {
     await windowManager.setIgnoreMouseEvents(true, forward: true);
   }
 
-  Rect _getWindowBounds(Offset currentPosition, bool isExpanded) {
-    // Row is pinned to bottom-left via Positioned, so only Y shifts.
-    final deltaY = expandedWindowSize.height - initialWindowSize.height;
-
-    if (isExpanded) {
-      // Collapsing: large -> small, window moves down
-      return Rect.fromLTWH(
-        currentPosition.dx,
-        currentPosition.dy + deltaY,
-        initialWindowSize.width,
-        initialWindowSize.height,
-      );
-    } else {
-      // Expanding: small -> large, window moves up
-      return Rect.fromLTWH(
-        currentPosition.dx,
-        currentPosition.dy - deltaY,
-        expandedWindowSize.width,
-        expandedWindowSize.height,
-      );
-    }
-  }
-
   Future<void> _handleToggleSettingsBox() async {
-    var isExpanded = _indicatorState == IndicatorState.expanded;
-    var bounds = _getWindowBounds(_trackedPosition, isExpanded);
+    final isExpanded = _indicatorState == IndicatorState.expanded;
 
-    _trackedPosition = Offset(bounds.left, bounds.top);
+    // Use actual window bounds to avoid DPI/OS rounding discrepancies
+    final currentPos = await windowManager.getPosition();
+    final currentSize = await windowManager.getSize();
+    final Size targetSize;
+    if (isExpanded) {
+      // Collapsing: use the actual idle size (may differ from nominal due to OS constraints)
+      targetSize = _actualIdleSize;
+    } else {
+      // Expanding: save actual idle size before growing
+      _actualIdleSize = currentSize;
+      targetSize = expandedWindowSize;
+    }
+
+    // Keep the bottom edge pinned at the same screen position
+    final newTop = currentPos.dy + currentSize.height - targetSize.height;
+    final bounds = Rect.fromLTWH(
+      currentPos.dx,
+      newTop,
+      targetSize.width,
+      targetSize.height,
+    );
+
     setState(() {
       _settingsBoxVisible = !isExpanded;
       _indicatorState = isExpanded ? IndicatorState.idle : IndicatorState.expanded;
     });
 
-    await windowManager.setMinimumSize(bounds.size);
-    await windowManager.setMaximumSize(bounds.size);
+    // Relax constraints to allow target size, then set bounds atomically.
+    // Locking min=max after setBounds can trigger Windows to re-adjust position.
+    await windowManager.setMinimumSize(initialWindowSize);
+    await windowManager.setMaximumSize(expandedWindowSize);
     await windowManager.setBounds(bounds);
 
     // Restore click-through after collapsing back to idle
