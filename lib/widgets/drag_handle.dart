@@ -100,7 +100,7 @@ class _DragHandleState extends State<DragHandle>
                       : colors.surfaceElevated,
                   borderRadius: BorderRadius.circular(kRadiusMd),
                   border: Border.all(
-                    color: colors.borderHover,
+                    color: colors.textOnPrimary,
                     width: 2,
                   ),
                 ),
