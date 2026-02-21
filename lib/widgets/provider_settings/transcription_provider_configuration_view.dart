@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:dropdown_button2/dropdown_button2.dart';
 import 'package:open_vibrance/services/storage_service.dart';
 import 'package:open_vibrance/transcription/types.dart';
 import 'package:open_vibrance/theme/app_colors.dart';
@@ -52,28 +53,55 @@ class _TranscriptionProviderConfigurationViewState
   }
 
   Widget _buildProviderSelector(BuildContext context) {
-    var dropdownItems = TranscriptionProviderKey.values.map(
-      (provider) => DropdownMenuItem(
-        value: provider,
-        child: Text(
-          provider.displayName,
-          style: TextStyle(color: Colors.white),
-        ),
-      ),
-    );
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
           'Select Transcription Provider',
-          style: TextStyle(color: Colors.white),
+          style: TextStyle(color: AppColors.zinc400, fontSize: 13, fontWeight: FontWeight.w500),
         ),
-        DropdownButton<TranscriptionProviderKey>(
-          value: _selectedProvider,
-          dropdownColor: AppColors.gray700,
-          items: dropdownItems.toList(),
-          onChanged: _handleProviderChange,
+        SizedBox(height: 8),
+        DropdownButtonHideUnderline(
+          child: DropdownButton2<TranscriptionProviderKey>(
+            value: _selectedProvider,
+            onChanged: _handleProviderChange,
+            items: TranscriptionProviderKey.values.map(
+              (provider) => DropdownMenuItem<TranscriptionProviderKey>(
+                value: provider,
+                child: Text(
+                  provider.displayName,
+                  style: TextStyle(color: AppColors.zinc300, fontSize: 14),
+                ),
+              ),
+            ).toList(),
+            buttonStyleData: ButtonStyleData(
+              height: 40,
+              padding: EdgeInsets.symmetric(horizontal: 12),
+              decoration: BoxDecoration(
+                color: AppColors.zinc800,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: AppColors.zinc700),
+              ),
+            ),
+            dropdownStyleData: DropdownStyleData(
+              decoration: BoxDecoration(
+                color: AppColors.zinc800,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: AppColors.zinc700),
+              ),
+              elevation: 0,
+            ),
+            iconStyleData: IconStyleData(
+              icon: Icon(Icons.keyboard_arrow_down_rounded),
+              iconSize: 20,
+              iconEnabledColor: AppColors.zinc400,
+            ),
+            menuItemStyleData: MenuItemStyleData(
+              height: 40,
+              padding: EdgeInsets.symmetric(horizontal: 12),
+              overlayColor: WidgetStatePropertyAll(AppColors.zinc700),
+            ),
+          ),
         ),
       ],
     );

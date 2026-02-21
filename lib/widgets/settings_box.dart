@@ -85,9 +85,9 @@ class _SettingsBoxState extends State<SettingsBox> {
       width: widget.expandedWindowSize.width - kDotSize * 3,
       height: widget.expandedWindowSize.height - kDotSize * 3,
       decoration: BoxDecoration(
-        color: AppColors.gray700,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.white, width: 2),
+        color: AppColors.zinc900,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.zinc700, width: 1),
       ),
       child: child,
     );
@@ -98,16 +98,18 @@ class _SettingsBoxState extends State<SettingsBox> {
       children: [
         if (_selectedSetting != null)
           _HoverableIcon(
-            iconData: Icons.arrow_back,
+            iconData: Icons.arrow_back_ios_new,
             onTap: () => setState(() => _selectedSetting = null),
+            color: AppColors.zinc500,
+            hoverColor: AppColors.zinc300,
           ),
         if (_selectedSetting != null) SizedBox(width: 8),
         Text(
           _selectedSetting?.title ?? 'Settings',
           style: TextStyle(
-            color: Colors.white,
-            fontSize: 18,
-            fontWeight: FontWeight.bold,
+            color: AppColors.zinc300,
+            fontSize: 16,
+            fontWeight: FontWeight.w600,
           ),
         ),
       ],
@@ -139,13 +141,13 @@ class _HoverableIcon extends StatefulWidget {
   final IconData iconData;
   final VoidCallback onTap;
   final Color color;
-  final double scaleFactor;
+  final Color? hoverColor;
 
   const _HoverableIcon({
     required this.iconData,
     required this.onTap,
     this.color = Colors.white,
-    this.scaleFactor = 1.3,
+    this.hoverColor,
   });
 
   @override
@@ -163,10 +165,12 @@ class __HoverableIconState extends State<_HoverableIcon> {
       onExit: (_) => setState(() => _isHovering = false),
       child: GestureDetector(
         onTap: widget.onTap,
-        child: AnimatedScale(
-          scale: _isHovering ? widget.scaleFactor : 1.0,
-          duration: const Duration(milliseconds: 100),
-          child: Icon(widget.iconData, color: widget.color),
+        child: Icon(
+          widget.iconData,
+          color: _isHovering && widget.hoverColor != null
+              ? widget.hoverColor
+              : widget.color,
+          size: 20,
         ),
       ),
     );
@@ -195,32 +199,37 @@ class __MenuItemState extends State<_MenuItem> {
       child: GestureDetector(
         onTap: widget.onTap,
         child: AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
-          curve: Curves.easeInOut,
+          duration: const Duration(milliseconds: 250),
+          curve: Curves.easeOut,
           decoration: BoxDecoration(
-            color: AppColors.gray700,
+            color: _isHovering ? AppColors.zinc800 : AppColors.zinc900,
             borderRadius: BorderRadius.circular(8),
-            border: Border.all(
-              color: _isHovering ? Colors.white : AppColors.gray500,
-              width: 2,
-            ),
           ),
           padding: EdgeInsets.symmetric(vertical: 12.0, horizontal: 16.0),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                widget.title,
+              AnimatedDefaultTextStyle(
+                duration: const Duration(milliseconds: 250),
+                curve: Curves.easeOut,
                 style: TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 16,
+                  color: _isHovering ? Colors.white : AppColors.zinc300,
+                  fontWeight: FontWeight.w500,
+                  fontSize: 14,
                 ),
+                child: Text(widget.title),
               ),
-              AnimatedScale(
-                scale: _isHovering ? 1.4 : 1.0,
-                duration: const Duration(milliseconds: 100),
-                child: Icon(Icons.chevron_right, color: Colors.white),
+              TweenAnimationBuilder<Color?>(
+                tween: ColorTween(
+                  end: _isHovering ? AppColors.zinc300 : AppColors.zinc500,
+                ),
+                duration: const Duration(milliseconds: 250),
+                curve: Curves.easeOut,
+                builder: (context, color, _) => Icon(
+                  Icons.chevron_right,
+                  color: color,
+                  size: 20,
+                ),
               ),
             ],
           ),

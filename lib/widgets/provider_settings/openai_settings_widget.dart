@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:dropdown_button2/dropdown_button2.dart';
 import 'package:open_vibrance/services/storage_service.dart';
 import 'package:open_vibrance/transcription/openai_transcription_provider.dart';
 import 'package:open_vibrance/theme/app_colors.dart';
@@ -86,86 +87,130 @@ class _OpenAiSettingsWidgetState extends State<OpenAiSettingsWidget> {
 
   @override
   Widget build(BuildContext context) {
-    var modelItems = OpenAIModel.values.map(
-      (model) => DropdownMenuItem(
-        value: model,
-        child: Text(model.displayName, style: TextStyle(color: Colors.white)),
-      ),
-    );
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('OpenAI API key', style: TextStyle(color: Colors.white)),
+        Text(
+          'OpenAI API key',
+          style: TextStyle(color: AppColors.zinc400, fontSize: 13, fontWeight: FontWeight.w500),
+        ),
         SizedBox(height: 8),
         TextField(
           controller: _openAiApiKeyController,
           decoration: InputDecoration(
             hintText: 'Enter your API key',
-            hintStyle: TextStyle(color: Colors.white54),
+            hintStyle: TextStyle(color: AppColors.zinc500),
+            filled: true,
+            fillColor: AppColors.zinc800,
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(8.0),
-              borderSide: BorderSide(color: Colors.white70),
+              borderSide: BorderSide(color: AppColors.zinc700),
             ),
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(8.0),
-              borderSide: BorderSide(color: Colors.white70),
+              borderSide: BorderSide(color: AppColors.zinc700),
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(8.0),
-              borderSide: BorderSide(color: AppColors.blue500, width: 2),
+              borderSide: BorderSide(color: AppColors.zinc400),
             ),
             contentPadding: EdgeInsets.symmetric(
               horizontal: 12.0,
               vertical: 8.0,
             ),
           ),
-          style: TextStyle(color: Colors.white),
+          style: TextStyle(color: AppColors.zinc300),
           onChanged: _onOpenAiApiKeyChanged,
         ),
         SizedBox(height: 32),
-        Text('OpenAI Model', style: TextStyle(color: Colors.white)),
+        Text(
+          'OpenAI Model',
+          style: TextStyle(color: AppColors.zinc400, fontSize: 13, fontWeight: FontWeight.w500),
+        ),
         SizedBox(height: 8),
         Text(
           'Select the model to use for transcription',
-          style: TextStyle(color: Colors.white54, fontSize: 12),
+          style: TextStyle(color: AppColors.zinc500, fontSize: 12),
         ),
-        DropdownButton<OpenAIModel>(
-          value: _selectedOpenAiModel,
-          dropdownColor: AppColors.gray700,
-          items: modelItems.toList(),
-          onChanged: _onOpenAiModelChanged,
+        SizedBox(height: 8),
+        DropdownButtonHideUnderline(
+          child: DropdownButton2<OpenAIModel>(
+            value: _selectedOpenAiModel,
+            onChanged: _onOpenAiModelChanged,
+            items: OpenAIModel.values.map(
+              (model) => DropdownMenuItem<OpenAIModel>(
+                value: model,
+                child: Text(
+                  model.displayName,
+                  style: TextStyle(color: AppColors.zinc300, fontSize: 14),
+                ),
+              ),
+            ).toList(),
+            buttonStyleData: ButtonStyleData(
+              height: 40,
+              padding: EdgeInsets.symmetric(horizontal: 12),
+              decoration: BoxDecoration(
+                color: AppColors.zinc800,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: AppColors.zinc700),
+              ),
+            ),
+            dropdownStyleData: DropdownStyleData(
+              decoration: BoxDecoration(
+                color: AppColors.zinc800,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: AppColors.zinc700),
+              ),
+              elevation: 0,
+            ),
+            iconStyleData: IconStyleData(
+              icon: Icon(Icons.keyboard_arrow_down_rounded),
+              iconSize: 20,
+              iconEnabledColor: AppColors.zinc400,
+            ),
+            menuItemStyleData: MenuItemStyleData(
+              height: 40,
+              padding: EdgeInsets.symmetric(horizontal: 12),
+              overlayColor: WidgetStatePropertyAll(AppColors.zinc700),
+            ),
+          ),
         ),
         SizedBox(height: 32),
-        Text('OpenAI Prompt', style: TextStyle(color: Colors.white)),
+        Text(
+          'OpenAI Prompt',
+          style: TextStyle(color: AppColors.zinc400, fontSize: 13, fontWeight: FontWeight.w500),
+        ),
         SizedBox(height: 8),
         Text(
           'Prompt to guide the transcription',
-          style: TextStyle(color: Colors.white54, fontSize: 12),
+          style: TextStyle(color: AppColors.zinc500, fontSize: 12),
         ),
         SizedBox(height: 8),
         TextField(
           controller: _openAiPromptController,
           decoration: InputDecoration(
             hintText: 'Enter prompt',
-            hintStyle: TextStyle(color: Colors.white54),
+            hintStyle: TextStyle(color: AppColors.zinc500),
+            filled: true,
+            fillColor: AppColors.zinc800,
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(8.0),
-              borderSide: BorderSide(color: Colors.white70),
+              borderSide: BorderSide(color: AppColors.zinc700),
             ),
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(8.0),
-              borderSide: BorderSide(color: Colors.white70),
+              borderSide: BorderSide(color: AppColors.zinc700),
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(8.0),
-              borderSide: BorderSide(color: AppColors.blue500, width: 2),
+              borderSide: BorderSide(color: AppColors.zinc400),
             ),
             contentPadding: EdgeInsets.symmetric(
               horizontal: 12.0,
               vertical: 8.0,
             ),
           ),
-          style: TextStyle(color: Colors.white),
+          style: TextStyle(color: AppColors.zinc300),
           onChanged: _onOpenAiPromptChanged,
           minLines: 3,
           maxLines: 5,

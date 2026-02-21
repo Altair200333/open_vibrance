@@ -45,11 +45,14 @@ class _CustomSettingsWidgetState extends State<CustomSettingsWidget> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Custom Python code', style: TextStyle(color: Colors.white)),
+        Text(
+          'Custom Python code',
+          style: TextStyle(color: AppColors.zinc400, fontSize: 13, fontWeight: FontWeight.w500),
+        ),
         SizedBox(height: 8),
         Text.rich(
           TextSpan(
-            style: TextStyle(color: Colors.white54, fontSize: 12),
+            style: TextStyle(color: AppColors.zinc500, fontSize: 12),
             children: [
               TextSpan(
                 text:
@@ -64,7 +67,7 @@ class _CustomSettingsWidgetState extends State<CustomSettingsWidget> {
               TextSpan(
                 text: 'base64_audio',
                 style: TextStyle(
-                  color: AppColors.blue300,
+                  color: AppColors.zinc300,
                   fontWeight: FontWeight.bold,
                 ),
               ),
@@ -73,7 +76,7 @@ class _CustomSettingsWidgetState extends State<CustomSettingsWidget> {
               TextSpan(
                 text: 'print',
                 style: TextStyle(
-                  color: AppColors.blue300,
+                  color: AppColors.zinc300,
                   fontWeight: FontWeight.bold,
                 ),
               ),
@@ -86,32 +89,34 @@ class _CustomSettingsWidgetState extends State<CustomSettingsWidget> {
         SizedBox(height: 8),
         Text(
           'If unsure what this means, just paste docs from your transcription provider into ChatGPT and ask to write Python snippet accepting base64 audio and returning a string from it',
-          style: TextStyle(color: AppColors.blue300, fontSize: 12),
+          style: TextStyle(color: AppColors.zinc400, fontSize: 12, fontStyle: FontStyle.italic),
         ),
         SizedBox(height: 16),
         TextField(
           controller: _customJSCodeController,
           decoration: InputDecoration(
             hintText: 'Plain Python code',
-            hintStyle: TextStyle(color: Colors.white54),
+            hintStyle: TextStyle(color: AppColors.zinc500),
+            filled: true,
+            fillColor: AppColors.zinc800,
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(8.0),
-              borderSide: BorderSide(color: Colors.white70),
+              borderSide: BorderSide(color: AppColors.zinc700),
             ),
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(8.0),
-              borderSide: BorderSide(color: Colors.white70),
+              borderSide: BorderSide(color: AppColors.zinc700),
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(8.0),
-              borderSide: BorderSide(color: AppColors.blue500, width: 2),
+              borderSide: BorderSide(color: AppColors.zinc400),
             ),
             contentPadding: EdgeInsets.symmetric(
               horizontal: 12.0,
               vertical: 8.0,
             ),
           ),
-          style: TextStyle(color: Colors.white),
+          style: TextStyle(color: AppColors.zinc300),
           onChanged: _onCustomJSCodeChanged,
           minLines: 5,
           maxLines: 300,

@@ -48,4 +48,13 @@ abstract class AppColors {
   static const purple700 = Color(0xFF553C9A);
   static const purple800 = Color(0xFF44337A);
   static const purple900 = Color(0xFF322659);
+
+  // Zinc – neutral grays without blue undertone (Tailwind zinc scale)
+  static const zinc900 = Color(0xFF18181B);
+  static const zinc800 = Color(0xFF27272A);
+  static const zinc700 = Color(0xFF3F3F46);
+  static const zinc600 = Color(0xFF52525B);
+  static const zinc500 = Color(0xFF71717A);
+  static const zinc400 = Color(0xFFA1A1AA);
+  static const zinc300 = Color(0xFFD4D4D8);
 }
