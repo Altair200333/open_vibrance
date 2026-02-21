@@ -1,17 +1,24 @@
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:open_vibrance/theme/app_colors.dart';
+import 'package:open_vibrance/widgets/constants.dart';
 
 class HoverableIcon extends StatefulWidget {
   final IconData iconData;
   final VoidCallback onTap;
   final Color color;
   final Color? hoverColor;
+  final double size;
+  final String? tooltip;
 
   const HoverableIcon({
     super.key,
     required this.iconData,
     required this.onTap,
-    this.color = Colors.white,
+    this.color = AppColors.iconDefault,
     this.hoverColor,
+    this.size = 20,
+    this.tooltip,
   });
 
   @override
@@ -23,18 +30,37 @@ class _HoverableIconState extends State<HoverableIcon> {
 
   @override
   Widget build(BuildContext context) {
+    final targetColor = _isHovering && widget.hoverColor != null
+        ? widget.hoverColor!
+        : widget.color;
+
+    final minHitArea = math.max(widget.size, 24.0);
+
+    Widget icon = TweenAnimationBuilder<Color?>(
+      tween: ColorTween(end: targetColor),
+      duration: kHoverDuration,
+      curve: kHoverCurve,
+      builder: (context, color, _) => Icon(
+        widget.iconData,
+        color: color,
+        size: widget.size,
+      ),
+    );
+
+    if (widget.tooltip != null) {
+      icon = Tooltip(message: widget.tooltip!, child: icon);
+    }
+
     return MouseRegion(
       cursor: _isHovering ? SystemMouseCursors.click : MouseCursor.defer,
       onEnter: (_) => setState(() => _isHovering = true),
       onExit: (_) => setState(() => _isHovering = false),
       child: GestureDetector(
         onTap: widget.onTap,
-        child: Icon(
-          widget.iconData,
-          color: _isHovering && widget.hoverColor != null
-              ? widget.hoverColor
-              : widget.color,
-          size: 20,
+        child: SizedBox(
+          width: minHitArea,
+          height: minHitArea,
+          child: Center(child: icon),
         ),
       ),
     );

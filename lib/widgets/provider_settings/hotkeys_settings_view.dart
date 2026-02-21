@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:hotkey_manager/hotkey_manager.dart';
 import 'package:open_vibrance/services/hotkey_repository.dart';
 import 'package:open_vibrance/theme/app_colors.dart';
+import 'package:open_vibrance/widgets/constants.dart';
 import 'package:open_vibrance/widgets/provider_settings/hotkey_constants.dart';
 
 class HotkeysSettingsView extends StatefulWidget {
@@ -159,123 +160,120 @@ class _HotkeysSettingsViewState extends State<HotkeysSettingsView> {
   bool get _hasError => _isRecording && _liveError != null;
 
   Color _getBorderColor() {
-    if (_hasError) return AppColors.red400;
-    if (_isRecording) return AppColors.zinc400;
-    if (_isHoveringField) return AppColors.zinc500;
-    return AppColors.zinc700;
+    if (_hasError) return AppColors.error;
+    if (_isRecording) return AppColors.borderFocus;
+    if (_isHoveringField) return AppColors.borderHover;
+    return AppColors.border;
   }
 
   Color _getTextColor() {
-    if (_hasError) return AppColors.red400;
+    if (_hasError) return AppColors.error;
     if (_isRecording) {
-      return _pressedKeys.isEmpty ? AppColors.zinc500 : AppColors.zinc300;
+      return _pressedKeys.isEmpty ? AppColors.textHint : AppColors.textPrimary;
     }
-    return AppColors.zinc300;
+    return AppColors.textPrimary;
   }
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Record hotkey',
-            style: TextStyle(
-              color: AppColors.zinc400,
-              fontSize: 13,
-              fontWeight: FontWeight.w500,
-            ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Record hotkey',
+          style: TextStyle(
+            color: AppColors.textSecondary,
+            fontSize: kFontSizeMd,
+            fontWeight: FontWeight.w500,
           ),
-          SizedBox(height: 8),
-          Text(
-            'Click the field below and press modifier + key',
-            style: TextStyle(color: AppColors.zinc500, fontSize: 12),
-          ),
-          SizedBox(height: 12),
-          Focus(
-            focusNode: _focusNode,
-            onKeyEvent: _onKeyEvent,
-            onFocusChange: (hasFocus) {
-              if (!hasFocus && _isRecording) _cancelRecording();
-            },
-            child: GestureDetector(
-              onTap: !_isRecording ? _startRecording : null,
-              child: MouseRegion(
-                cursor:
-                    !_isRecording
-                        ? SystemMouseCursors.click
-                        : SystemMouseCursors.basic,
-                onEnter: (_) => setState(() => _isHoveringField = true),
-                onExit: (_) => setState(() => _isHoveringField = false),
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 200),
-                  curve: Curves.easeOut,
-                  padding: EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                  decoration: BoxDecoration(
-                    color: AppColors.zinc800,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: _getBorderColor(), width: 1),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(
-                        _isRecording
-                            ? Icons.fiber_manual_record
-                            : Icons.keyboard_outlined,
-                        color:
-                            _isRecording ? AppColors.red400 : AppColors.zinc500,
-                        size: 16,
+        ),
+        SizedBox(height: 8),
+        Text(
+          'Click the field below and press modifier + key',
+          style: TextStyle(color: AppColors.textHint, fontSize: kFontSizeSm),
+        ),
+        SizedBox(height: 12),
+        Focus(
+          focusNode: _focusNode,
+          onKeyEvent: _onKeyEvent,
+          onFocusChange: (hasFocus) {
+            if (!hasFocus && _isRecording) _cancelRecording();
+          },
+          child: GestureDetector(
+            onTap: !_isRecording ? _startRecording : null,
+            child: MouseRegion(
+              cursor:
+                  !_isRecording
+                      ? SystemMouseCursors.click
+                      : SystemMouseCursors.basic,
+              onEnter: (_) => setState(() => _isHoveringField = true),
+              onExit: (_) => setState(() => _isHoveringField = false),
+              child: AnimatedContainer(
+                duration: kHoverDuration,
+                curve: kHoverCurve,
+                padding: EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                decoration: BoxDecoration(
+                  color: AppColors.surfaceElevated,
+                  borderRadius: BorderRadius.circular(kRadiusMd),
+                  border: Border.all(color: _getBorderColor(), width: 1),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      _isRecording
+                          ? Icons.fiber_manual_record
+                          : Icons.keyboard_outlined,
+                      color:
+                          _isRecording ? AppColors.error : AppColors.iconDefault,
+                      size: 16,
+                    ),
+                    SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        _getDisplayText(),
+                        style: TextStyle(
+                          color: _getTextColor(),
+                          fontSize: kFontSizeLg,
+                        ),
                       ),
-                      SizedBox(width: 10),
-                      Expanded(
-                        child: Text(
-                          _getDisplayText(),
-                          style: TextStyle(
-                            color: _getTextColor(),
-                            fontSize: 14,
+                    ),
+                    if (_isRecording)
+                      MouseRegion(
+                        cursor: SystemMouseCursors.click,
+                        onEnter:
+                            (_) => setState(() => _isHoveringClose = true),
+                        onExit:
+                            (_) => setState(() => _isHoveringClose = false),
+                        child: GestureDetector(
+                          onTap: _cancelRecording,
+                          child: Icon(
+                            Icons.close,
+                            color:
+                                _isHoveringClose
+                                    ? AppColors.iconHover
+                                    : AppColors.iconDefault,
+                            size: 16,
                           ),
                         ),
                       ),
-                      if (_isRecording)
-                        MouseRegion(
-                          cursor: SystemMouseCursors.click,
-                          onEnter:
-                              (_) => setState(() => _isHoveringClose = true),
-                          onExit:
-                              (_) => setState(() => _isHoveringClose = false),
-                          child: GestureDetector(
-                            onTap: _cancelRecording,
-                            child: Icon(
-                              Icons.close,
-                              color:
-                                  _isHoveringClose
-                                      ? AppColors.zinc300
-                                      : AppColors.zinc500,
-                              size: 16,
-                            ),
-                          ),
-                        ),
-                    ],
-                  ),
+                  ],
                 ),
               ),
             ),
           ),
-          if (_isRecording) ...[
-            SizedBox(height: 8),
-            Text(
-              _liveError ?? 'Press Esc to cancel',
-              style: TextStyle(
-                color:
-                    _liveError != null ? AppColors.red400 : AppColors.zinc500,
-                fontSize: 11,
-              ),
+        ),
+        if (_isRecording) ...[
+          SizedBox(height: 8),
+          Text(
+            _liveError ?? 'Press Esc to cancel',
+            style: TextStyle(
+              color:
+                  _liveError != null ? AppColors.error : AppColors.textHint,
+              fontSize: kFontSizeXs,
             ),
-          ],
+          ),
         ],
-      ),
+      ],
     );
   }
 }

@@ -74,7 +74,7 @@ class DotIndicator extends StatefulWidget {
   }
 
   static const _shadow = [
-    BoxShadow(color: Color(0x8A000000), blurRadius: 6, spreadRadius: 1),
+    BoxShadow(color: AppColors.shadow, blurRadius: 6, spreadRadius: 1),
   ];
 
   BoxDecoration get _indicatorDotDecoration {
@@ -82,55 +82,50 @@ class DotIndicator extends StatefulWidget {
       case IndicatorState.recording:
         var borderW = 1 + _getNormalizedVolume() * 2;
         return BoxDecoration(
-          color: AppColors.red500,
+          color: AppColors.errorBg,
           borderRadius: BorderRadius.circular(kDotSize),
-          border: Border.all(color: Colors.white, width: borderW),
+          border: Border.all(color: AppColors.textOnPrimary, width: borderW),
           boxShadow: _shadow,
         );
       case IndicatorState.transcribing:
         return BoxDecoration(
-          color: AppColors.zinc800,
+          color: AppColors.surfaceElevated,
           borderRadius: BorderRadius.circular(5),
-          border: Border.all(color: Colors.white, width: 2),
+          border: Border.all(color: AppColors.textOnPrimary, width: 2),
           boxShadow: _shadow,
         );
       case IndicatorState.error:
         return BoxDecoration(
-          color: AppColors.red500,
+          color: AppColors.errorBg,
           borderRadius: BorderRadius.circular(5),
-          border: Border.all(color: Colors.white, width: 2),
+          border: Border.all(color: AppColors.textOnPrimary, width: 2),
           boxShadow: _shadow,
         );
       case IndicatorState.expanded:
         return BoxDecoration(
-          color: AppColors.zinc800,
+          color: AppColors.surfaceElevated,
           borderRadius: BorderRadius.circular(kDotSize),
-          border: Border.all(color: Colors.white, width: 2),
+          border: Border.all(color: AppColors.textOnPrimary, width: 2),
           boxShadow: _shadow,
         );
       case IndicatorState.idle:
         return BoxDecoration(
-          color: AppColors.zinc800,
+          color: AppColors.surfaceElevated,
           borderRadius: BorderRadius.circular(isHovered ? 5 : 10),
-          border: Border.all(color: Colors.white, width: 2),
+          border: Border.all(color: AppColors.textOnPrimary, width: 2),
           boxShadow: _shadow,
         );
       default:
         return BoxDecoration(
-          color: Colors.grey.withAlpha(120),
+          color: AppColors.border,
           borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: Colors.white70, width: 1.5),
+          border: Border.all(color: AppColors.textOnPrimary.withAlpha(180), width: 1.5),
         );
     }
   }
 }
 
 class _DotIndicatorState extends State<DotIndicator> {
-  @override
-  void initState() {
-    super.initState();
-  }
-
   Widget? get _indicatorDotContent {
     switch (widget.state) {
       case IndicatorState.recording:
@@ -138,9 +133,9 @@ class _DotIndicatorState extends State<DotIndicator> {
       case IndicatorState.transcribing:
         return const PulseDots();
       case IndicatorState.error:
-        return Icon(Icons.close, color: Colors.white, size: kDotSize * 0.55);
+        return Icon(Icons.close, color: AppColors.textOnPrimary, size: kDotSize * 0.55);
       case IndicatorState.expanded:
-        return Icon(Icons.close, color: Colors.white, size: kDotSize * 0.65);
+        return Icon(Icons.close, color: AppColors.textOnPrimary, size: kDotSize * 0.65);
       case IndicatorState.idle:
         return IdleDots(isHovered: widget.isHovered);
       default:

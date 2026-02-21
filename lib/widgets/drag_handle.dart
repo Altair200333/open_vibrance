@@ -37,14 +37,15 @@ class _DragHandleState extends State<DragHandle> {
           onEnter: (_) => setState(() => _hovering = true),
           onExit: (_) => setState(() => _hovering = false),
           child: AnimatedContainer(
-            duration: const Duration(milliseconds: 120),
+            duration: kHoverDuration,
+            curve: kHoverCurve,
             width: _handleSize,
             height: _handleSize,
             decoration: BoxDecoration(
-              color: isHandleActive ? AppColors.zinc700 : AppColors.zinc800,
-              borderRadius: BorderRadius.circular(8),
+              color: isHandleActive ? AppColors.border : AppColors.surfaceElevated,
+              borderRadius: BorderRadius.circular(kRadiusMd),
               border: Border.all(
-                color: isHandleActive ? AppColors.zinc500 : AppColors.zinc600,
+                color: isHandleActive ? AppColors.borderHover : AppColors.zinc600,
                 width: 2,
               ),
             ),
@@ -100,13 +101,13 @@ class _DragArrow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return AnimatedAlign(
-      duration: const Duration(milliseconds: 200),
-      curve: Curves.easeOut,
+      duration: kHoverDuration,
+      curve: kHoverCurve,
       alignment: isHandleActive ? activeAlignment : inactiveAlignment,
       child: Icon(
         icon,
         size: isHandleActive ? 10.0 : 8.0,
-        color: Colors.white,
+        color: AppColors.textOnPrimary,
       ),
     );
   }

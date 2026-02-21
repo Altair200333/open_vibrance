@@ -126,9 +126,9 @@ class _SettingsBoxState extends State<SettingsBox> {
       width: widget.expandedWindowSize.width - kDotSize * 3,
       height: widget.expandedWindowSize.height - kDotSize * 3,
       decoration: BoxDecoration(
-        color: AppColors.zinc900,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.zinc700, width: 1),
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(kRadiusLg),
+        border: Border.all(color: AppColors.border, width: 1),
       ),
       child: Stack(
         children: [
@@ -141,11 +141,11 @@ class _SettingsBoxState extends State<SettingsBox> {
               ignoring: !_showToast,
               child: AnimatedOpacity(
                 opacity: _showToast ? 1.0 : 0.0,
-                duration: const Duration(milliseconds: 250),
+                duration: kHoverDuration,
                 child: AnimatedSlide(
                   offset: _showToast ? Offset.zero : const Offset(0, 0.3),
-                  duration: const Duration(milliseconds: 250),
-                  curve: Curves.easeOut,
+                  duration: kHoverDuration,
+                  curve: kHoverCurve,
                   child: _Toast(onClose: _dismissToast),
                 ),
               ),
@@ -163,15 +163,15 @@ class _SettingsBoxState extends State<SettingsBox> {
           HoverableIcon(
             iconData: Icons.arrow_back_ios_new,
             onTap: () => setState(() => _selectedSetting = null),
-            color: AppColors.zinc500,
-            hoverColor: AppColors.zinc300,
+            color: AppColors.iconDefault,
+            hoverColor: AppColors.iconHover,
           ),
         if (_selectedSetting != null) SizedBox(width: 8),
         Text(
           _selectedSetting?.title ?? 'Settings',
           style: TextStyle(
-            color: AppColors.zinc300,
-            fontSize: 16,
+            color: AppColors.textPrimary,
+            fontSize: kFontSizeXl,
             fontWeight: FontWeight.w600,
           ),
         ),
@@ -211,20 +211,20 @@ class _Toast extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
-        color: AppColors.zinc800,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: AppColors.zinc700, width: 1),
+        color: AppColors.surfaceElevated,
+        borderRadius: BorderRadius.circular(kRadiusMd),
+        border: Border.all(color: AppColors.border, width: 1),
       ),
       child: Row(
         children: [
-          Icon(Icons.content_paste, color: AppColors.zinc400, size: 16),
+          Icon(Icons.content_paste, color: AppColors.textSecondary, size: 16),
           const SizedBox(width: 10),
           Expanded(
             child: Text(
               'Copied to clipboard',
               style: TextStyle(
-                color: AppColors.zinc300,
-                fontSize: 13,
+                color: AppColors.textPrimary,
+                fontSize: kFontSizeMd,
                 fontWeight: FontWeight.w500,
               ),
             ),
@@ -232,8 +232,8 @@ class _Toast extends StatelessWidget {
           HoverableIcon(
             iconData: Icons.close,
             onTap: onClose,
-            color: AppColors.zinc500,
-            hoverColor: AppColors.zinc300,
+            color: AppColors.iconDefault,
+            hoverColor: AppColors.iconHover,
           ),
         ],
       ),
@@ -264,11 +264,11 @@ class __MenuItemState extends State<_MenuItem> {
       child: GestureDetector(
         onTap: widget.onTap,
         child: AnimatedContainer(
-          duration: const Duration(milliseconds: 250),
-          curve: Curves.easeOut,
+          duration: kHoverDuration,
+          curve: kHoverCurve,
           decoration: BoxDecoration(
-            color: _isHovering ? AppColors.zinc800 : AppColors.zinc900,
-            borderRadius: BorderRadius.circular(8),
+            color: _isHovering ? AppColors.surfaceElevated : AppColors.surface,
+            borderRadius: BorderRadius.circular(kRadiusMd),
           ),
           padding: EdgeInsets.symmetric(vertical: 12.0, horizontal: 16.0),
           child: Row(
@@ -278,10 +278,10 @@ class __MenuItemState extends State<_MenuItem> {
                 children: [
                   TweenAnimationBuilder<Color?>(
                     tween: ColorTween(
-                      end: _isHovering ? AppColors.zinc300 : AppColors.zinc500,
+                      end: _isHovering ? AppColors.iconHover : AppColors.iconDefault,
                     ),
-                    duration: const Duration(milliseconds: 250),
-                    curve: Curves.easeOut,
+                    duration: kHoverDuration,
+                    curve: kHoverCurve,
                     builder: (context, color, _) => Icon(
                       widget.icon,
                       color: color,
@@ -290,12 +290,12 @@ class __MenuItemState extends State<_MenuItem> {
                   ),
                   const SizedBox(width: 12),
                   AnimatedDefaultTextStyle(
-                    duration: const Duration(milliseconds: 250),
-                    curve: Curves.easeOut,
+                    duration: kHoverDuration,
+                    curve: kHoverCurve,
                     style: TextStyle(
-                      color: _isHovering ? Colors.white : AppColors.zinc300,
+                      color: _isHovering ? AppColors.textOnPrimary : AppColors.textPrimary,
                       fontWeight: FontWeight.w500,
-                      fontSize: 14,
+                      fontSize: kFontSizeLg,
                     ),
                     child: Text(widget.title),
                   ),
@@ -303,10 +303,10 @@ class __MenuItemState extends State<_MenuItem> {
               ),
               TweenAnimationBuilder<Color?>(
                 tween: ColorTween(
-                  end: _isHovering ? AppColors.zinc300 : AppColors.zinc500,
+                  end: _isHovering ? AppColors.iconHover : AppColors.iconDefault,
                 ),
-                duration: const Duration(milliseconds: 250),
-                curve: Curves.easeOut,
+                duration: kHoverDuration,
+                curve: kHoverCurve,
                 builder: (context, color, _) => Icon(
                   Icons.chevron_right,
                   color: color,

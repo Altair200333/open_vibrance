@@ -4,6 +4,7 @@ import 'package:open_vibrance/models/history_entry.dart';
 import 'package:open_vibrance/services/history_repository.dart';
 import 'package:open_vibrance/services/transcription_service.dart';
 import 'package:open_vibrance/theme/app_colors.dart';
+import 'package:open_vibrance/widgets/constants.dart';
 import 'package:open_vibrance/utils/common.dart';
 import 'package:open_vibrance/widgets/hoverable_icon.dart';
 
@@ -104,7 +105,7 @@ class _HistoryViewState extends State<HistoryView> {
             height: 16,
             child: CircularProgressIndicator(
               strokeWidth: 2,
-              color: AppColors.zinc400,
+              color: AppColors.textSecondary,
             ),
           ),
         ),
@@ -117,7 +118,7 @@ class _HistoryViewState extends State<HistoryView> {
           padding: const EdgeInsets.all(32),
           child: Text(
             'No transcription history yet',
-            style: TextStyle(color: AppColors.zinc500, fontSize: 14),
+            style: TextStyle(color: AppColors.textHint, fontSize: kFontSizeLg),
           ),
         ),
       );
@@ -150,14 +151,14 @@ class _HistoryViewState extends State<HistoryView> {
           height: 16,
           child: CircularProgressIndicator(
             strokeWidth: 2,
-            color: AppColors.zinc400,
+            color: AppColors.textSecondary,
           ),
         );
       case _RetryState.success:
         child = Icon(
           key: const ValueKey('check'),
           Icons.check,
-          color: AppColors.blue400,
+          color: AppColors.accent,
           size: 20,
         );
       case null:
@@ -165,14 +166,14 @@ class _HistoryViewState extends State<HistoryView> {
           key: const ValueKey('retry'),
           iconData: Icons.refresh,
           onTap: () => _retryTranscription(entry),
-          color: AppColors.zinc500,
-          hoverColor: AppColors.zinc300,
+          color: AppColors.iconDefault,
+          hoverColor: AppColors.iconHover,
         );
     }
 
     return SizedBox(
-      width: 20,
-      height: 20,
+      width: 24,
+      height: 24,
       child: AnimatedSwitcher(
         duration: const Duration(milliseconds: 300),
         child: child,
@@ -184,10 +185,10 @@ class _HistoryViewState extends State<HistoryView> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: AppColors.zinc800,
-        borderRadius: BorderRadius.circular(8),
+        color: AppColors.surfaceElevated,
+        borderRadius: BorderRadius.circular(kRadiusMd),
         border: Border.all(
-          color: entry.success ? AppColors.zinc700 : AppColors.red900,
+          color: entry.success ? AppColors.border : AppColors.errorBorder,
           width: 1,
         ),
       ),
@@ -195,7 +196,7 @@ class _HistoryViewState extends State<HistoryView> {
         children: [
           Icon(
             entry.success ? Icons.check_circle_outline : Icons.error_outline,
-            color: entry.success ? AppColors.blue400 : AppColors.red400,
+            color: entry.success ? AppColors.accent : AppColors.error,
             size: 16,
           ),
           const SizedBox(width: 10),
@@ -206,8 +207,8 @@ class _HistoryViewState extends State<HistoryView> {
                 Text(
                   entry.transcription ?? 'Transcription failed',
                   style: TextStyle(
-                    color: entry.success ? AppColors.zinc300 : AppColors.red300,
-                    fontSize: 13,
+                    color: entry.success ? AppColors.textPrimary : AppColors.errorText,
+                    fontSize: kFontSizeMd,
                   ),
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
@@ -215,7 +216,7 @@ class _HistoryViewState extends State<HistoryView> {
                 const SizedBox(height: 4),
                 Text(
                   _formatTimestamp(entry.timestamp),
-                  style: TextStyle(color: AppColors.zinc500, fontSize: 11),
+                  style: TextStyle(color: AppColors.textHint, fontSize: kFontSizeXs),
                 ),
               ],
             ),
