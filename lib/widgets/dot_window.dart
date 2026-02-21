@@ -102,6 +102,9 @@ class _DotWindowState extends State<DotWindow> with WindowListener {
         timestamp: DateTime.now(),
         success: false,
       ));
+
+      setState(() => _indicatorState = IndicatorState.error);
+      await Future.delayed(const Duration(milliseconds: 1200));
     } finally {
       setState(() => _indicatorState = IndicatorState.idle);
     }

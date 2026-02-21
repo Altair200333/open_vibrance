@@ -5,8 +5,9 @@ import 'package:open_vibrance/widgets/constants.dart';
 import 'package:open_vibrance/widgets/dot_indicator/recording_dot.dart';
 import 'package:open_vibrance/widgets/dot_indicator/pulse_dots.dart';
 import 'package:open_vibrance/widgets/dot_indicator/idle_dots.dart';
+import 'package:open_vibrance/widgets/dot_indicator/error_shake.dart';
 
-enum IndicatorState { idle, recording, transcribing, expanded }
+enum IndicatorState { idle, recording, transcribing, error, expanded }
 
 const double kDotIndicatorMinScale = 0.4;
 const double kDotIndicatorMaxScale = 1;
@@ -48,6 +49,7 @@ class DotIndicator extends StatefulWidget {
       case IndicatorState.expanded:
         return kDotSize;
       case IndicatorState.transcribing:
+      case IndicatorState.error:
         return kDotSize * 2.5;
       case IndicatorState.idle:
         return isHovered ? kDotSize * 2.5 : kDotSize * 2;
@@ -62,6 +64,7 @@ class DotIndicator extends StatefulWidget {
       case IndicatorState.expanded:
         return kDotSize;
       case IndicatorState.transcribing:
+      case IndicatorState.error:
         return kDotSize;
       case IndicatorState.idle:
         return isHovered ? kDotSize : kDotSize * 0.5;
@@ -82,6 +85,12 @@ class DotIndicator extends StatefulWidget {
       case IndicatorState.transcribing:
         return BoxDecoration(
           color: AppColors.blue500,
+          borderRadius: BorderRadius.circular(5),
+          border: Border.all(color: Colors.white, width: 2),
+        );
+      case IndicatorState.error:
+        return BoxDecoration(
+          color: AppColors.red500,
           borderRadius: BorderRadius.circular(5),
           border: Border.all(color: Colors.white, width: 2),
         );
@@ -119,6 +128,8 @@ class _DotIndicatorState extends State<DotIndicator> {
         return null;
       case IndicatorState.transcribing:
         return const PulseDots();
+      case IndicatorState.error:
+        return Icon(Icons.close, color: Colors.white, size: kDotSize * 0.55);
       case IndicatorState.expanded:
         return Icon(Icons.close, color: Colors.white, size: kDotSize * 0.65);
       case IndicatorState.idle:
@@ -143,7 +154,7 @@ class _DotIndicatorState extends State<DotIndicator> {
         decoration: widget._indicatorDotDecoration,
       );
     }
-    return AnimatedContainer(
+    final container = AnimatedContainer(
       duration: const Duration(milliseconds: 180),
       curve: Curves.easeInOutCubic,
       width: width,
@@ -151,6 +162,10 @@ class _DotIndicatorState extends State<DotIndicator> {
       decoration: widget._indicatorDotDecoration,
       child: _indicatorDotContent,
     );
+    if (widget.state == IndicatorState.error) {
+      return ErrorShake(child: container);
+    }
+    return container;
   }
 
   @override
