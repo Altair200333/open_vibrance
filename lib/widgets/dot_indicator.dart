@@ -73,6 +73,10 @@ class DotIndicator extends StatefulWidget {
     }
   }
 
+  static const _shadow = [
+    BoxShadow(color: Color(0x8A000000), blurRadius: 6, spreadRadius: 1),
+  ];
+
   BoxDecoration get _indicatorDotDecoration {
     switch (state) {
       case IndicatorState.recording:
@@ -81,30 +85,35 @@ class DotIndicator extends StatefulWidget {
           color: AppColors.red500,
           borderRadius: BorderRadius.circular(kDotSize),
           border: Border.all(color: Colors.white, width: borderW),
+          boxShadow: _shadow,
         );
       case IndicatorState.transcribing:
         return BoxDecoration(
-          color: AppColors.blue500,
+          color: AppColors.zinc800,
           borderRadius: BorderRadius.circular(5),
           border: Border.all(color: Colors.white, width: 2),
+          boxShadow: _shadow,
         );
       case IndicatorState.error:
         return BoxDecoration(
           color: AppColors.red500,
           borderRadius: BorderRadius.circular(5),
           border: Border.all(color: Colors.white, width: 2),
+          boxShadow: _shadow,
         );
       case IndicatorState.expanded:
         return BoxDecoration(
-          color: AppColors.blue500,
+          color: AppColors.zinc800,
           borderRadius: BorderRadius.circular(kDotSize),
           border: Border.all(color: Colors.white, width: 2),
+          boxShadow: _shadow,
         );
       case IndicatorState.idle:
         return BoxDecoration(
-          color: AppColors.blue500,
+          color: AppColors.zinc800,
           borderRadius: BorderRadius.circular(isHovered ? 5 : 10),
           border: Border.all(color: Colors.white, width: 2),
+          boxShadow: _shadow,
         );
       default:
         return BoxDecoration(

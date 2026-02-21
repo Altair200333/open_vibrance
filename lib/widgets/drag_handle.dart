@@ -3,6 +3,8 @@ import 'package:open_vibrance/theme/app_colors.dart';
 import 'package:open_vibrance/widgets/constants.dart';
 import 'package:window_manager/window_manager.dart';
 
+const double _handleSize = kDotSize * 1.3;
+
 class DragHandle extends StatefulWidget {
   final bool dragging;
   final bool showWindowContent;
@@ -31,18 +33,20 @@ class _DragHandleState extends State<DragHandle> {
       child: GestureDetector(
         onPanStart: (details) => windowManager.startDragging(),
         child: MouseRegion(
+          cursor: SystemMouseCursors.click,
           onEnter: (_) => setState(() => _hovering = true),
           onExit: (_) => setState(() => _hovering = false),
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 120),
-            width: kDotSize,
-            height: kDotSize,
+            width: _handleSize,
+            height: _handleSize,
             decoration: BoxDecoration(
-              color:
-                  isHandleActive
-                      ? AppColors.blue500
-                      : Colors.grey.withAlpha(100),
+              color: isHandleActive ? AppColors.zinc700 : AppColors.zinc800,
               borderRadius: BorderRadius.circular(8),
+              border: Border.all(
+                color: isHandleActive ? AppColors.zinc500 : AppColors.zinc600,
+                width: 2,
+              ),
             ),
             child: Stack(
               alignment: Alignment.center,
@@ -51,25 +55,25 @@ class _DragHandleState extends State<DragHandle> {
                   isHandleActive: isHandleActive,
                   icon: Icons.keyboard_arrow_up,
                   activeAlignment: Alignment.topCenter,
-                  inactiveAlignment: Alignment(0, -0.7),
+                  inactiveAlignment: const Alignment(0, -0.7),
                 ),
                 _DragArrow(
                   isHandleActive: isHandleActive,
                   icon: Icons.keyboard_arrow_down,
                   activeAlignment: Alignment.bottomCenter,
-                  inactiveAlignment: Alignment(0, 0.7),
+                  inactiveAlignment: const Alignment(0, 0.7),
                 ),
                 _DragArrow(
                   isHandleActive: isHandleActive,
                   icon: Icons.keyboard_arrow_left,
                   activeAlignment: Alignment.centerLeft,
-                  inactiveAlignment: Alignment(-0.7, 0),
+                  inactiveAlignment: const Alignment(-0.7, 0),
                 ),
                 _DragArrow(
                   isHandleActive: isHandleActive,
                   icon: Icons.keyboard_arrow_right,
                   activeAlignment: Alignment.centerRight,
-                  inactiveAlignment: Alignment(0.7, 0),
+                  inactiveAlignment: const Alignment(0.7, 0),
                 ),
               ],
             ),
@@ -87,7 +91,6 @@ class _DragArrow extends StatelessWidget {
   final Alignment inactiveAlignment;
 
   const _DragArrow({
-    super.key,
     required this.isHandleActive,
     required this.icon,
     required this.activeAlignment,
@@ -97,12 +100,13 @@ class _DragArrow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return AnimatedAlign(
-      duration: const Duration(milliseconds: 120),
+      duration: const Duration(milliseconds: 200),
+      curve: Curves.easeOut,
       alignment: isHandleActive ? activeAlignment : inactiveAlignment,
       child: Icon(
         icon,
-        size: isHandleActive ? 8.0 : 6.0,
-        color: isHandleActive ? Colors.white : Colors.black,
+        size: isHandleActive ? 10.0 : 8.0,
+        color: Colors.white,
       ),
     );
   }

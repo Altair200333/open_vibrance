@@ -6,8 +6,11 @@ import 'package:open_vibrance/theme/app_colors.dart';
 import 'package:open_vibrance/widgets/provider_settings/hotkey_constants.dart';
 
 class HotkeysSettingsView extends StatefulWidget {
-  final void Function(List<HotKeyModifier> modifiers, List<PhysicalKeyboardKey> keys)
-      onHotkeyChanged;
+  final void Function(
+    List<HotKeyModifier> modifiers,
+    List<PhysicalKeyboardKey> keys,
+  )
+  onHotkeyChanged;
   final VoidCallback onRecordingStarted;
 
   const HotkeysSettingsView({
@@ -200,9 +203,10 @@ class _HotkeysSettingsViewState extends State<HotkeysSettingsView> {
             child: GestureDetector(
               onTap: !_isRecording ? _startRecording : null,
               child: MouseRegion(
-                cursor: !_isRecording
-                    ? SystemMouseCursors.click
-                    : SystemMouseCursors.basic,
+                cursor:
+                    !_isRecording
+                        ? SystemMouseCursors.click
+                        : SystemMouseCursors.basic,
                 onEnter: (_) => setState(() => _isHoveringField = true),
                 onExit: (_) => setState(() => _isHoveringField = false),
                 child: AnimatedContainer(
@@ -220,7 +224,8 @@ class _HotkeysSettingsViewState extends State<HotkeysSettingsView> {
                         _isRecording
                             ? Icons.fiber_manual_record
                             : Icons.keyboard_outlined,
-                        color: _isRecording ? AppColors.red400 : AppColors.zinc500,
+                        color:
+                            _isRecording ? AppColors.red400 : AppColors.zinc500,
                         size: 16,
                       ),
                       SizedBox(width: 10),
@@ -236,15 +241,18 @@ class _HotkeysSettingsViewState extends State<HotkeysSettingsView> {
                       if (_isRecording)
                         MouseRegion(
                           cursor: SystemMouseCursors.click,
-                          onEnter: (_) => setState(() => _isHoveringClose = true),
-                          onExit: (_) => setState(() => _isHoveringClose = false),
+                          onEnter:
+                              (_) => setState(() => _isHoveringClose = true),
+                          onExit:
+                              (_) => setState(() => _isHoveringClose = false),
                           child: GestureDetector(
                             onTap: _cancelRecording,
                             child: Icon(
                               Icons.close,
-                              color: _isHoveringClose
-                                  ? AppColors.zinc300
-                                  : AppColors.zinc500,
+                              color:
+                                  _isHoveringClose
+                                      ? AppColors.zinc300
+                                      : AppColors.zinc500,
                               size: 16,
                             ),
                           ),
@@ -260,7 +268,8 @@ class _HotkeysSettingsViewState extends State<HotkeysSettingsView> {
             Text(
               _liveError ?? 'Press Esc to cancel',
               style: TextStyle(
-                color: _liveError != null ? AppColors.red400 : AppColors.zinc500,
+                color:
+                    _liveError != null ? AppColors.red400 : AppColors.zinc500,
                 fontSize: 11,
               ),
             ),
