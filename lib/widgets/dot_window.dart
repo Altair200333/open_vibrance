@@ -43,7 +43,6 @@ class _DotWindowState extends State<DotWindow> with WindowListener {
   @override
   void initState() {
     super.initState();
-    windowManager.addListener(this);
     _initWindow();
 
     _registerHotKeys();
