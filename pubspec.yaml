@@ -22,6 +22,7 @@ dependencies:
   keypress_simulator: ^0.2.0
   path: ^1.9.1
   dropdown_button2: ^2.3.9
+  path_provider: ^2.1.0
 
 
 dev_dependencies:

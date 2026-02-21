@@ -15,15 +15,15 @@ class AudioService extends ChangeNotifier {
   /// Checks if microphone permission is granted.
   Future<bool> hasPermission() => _recorder.hasPermission();
 
-  /// Starts recording audio to a temporary file and listens for amplitude changes.
-  Future<void> start() async {
+  /// Starts recording audio and listens for amplitude changes.
+  /// If [path] is provided, records to that path; otherwise uses a temp file.
+  Future<void> start({String? path}) async {
     final granted = await _recorder.hasPermission();
     if (!granted) {
       throw Exception('Microphone permission denied');
     }
 
-    final tempDir = Directory.systemTemp;
-    final recordingPath = '${tempDir.path}/last_recording.wav';
+    final recordingPath = path ?? '${Directory.systemTemp.path}/last_recording.wav';
 
     await _recorder.start(
       const RecordConfig(encoder: AudioEncoder.wav),

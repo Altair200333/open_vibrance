@@ -15,6 +15,9 @@ import 'package:open_vibrance/widgets/settings_box.dart' show SettingsBox;
 import 'package:open_vibrance/widgets/constants.dart';
 import 'package:flutter/foundation.dart' show defaultTargetPlatform;
 import 'package:open_vibrance/services/hotkey_repository.dart';
+import 'package:open_vibrance/services/history_repository.dart';
+import 'package:open_vibrance/models/history_entry.dart';
+
 class DotWindow extends StatefulWidget {
   const DotWindow({super.key});
 
@@ -38,6 +41,8 @@ class _DotWindowState extends State<DotWindow> with WindowListener {
 
   final ShortcutHelper _shortcutHelper = ShortcutHelper();
   final TranscriptionService _transcriptionService = TranscriptionService();
+  final HistoryRepository _historyRepository = HistoryRepository();
+  String? _currentRecordingPath;
   Timer? _exitDebounce;
   Size _actualIdleSize = initialWindowSize;
 
@@ -66,7 +71,8 @@ class _DotWindowState extends State<DotWindow> with WindowListener {
 
   Future<void> _startRecording() async {
     try {
-      await _audioService.start();
+      _currentRecordingPath = await _historyRepository.generateRecordingPath();
+      await _audioService.start(path: _currentRecordingPath!);
     } catch (e) {
       dprint('Recording failed: $e');
       setState(() => _indicatorState = IndicatorState.idle);
@@ -77,9 +83,25 @@ class _DotWindowState extends State<DotWindow> with WindowListener {
     try {
       setState(() => _indicatorState = IndicatorState.transcribing);
 
-      await _transcriptionService.transcribeFileAndPaste(path);
+      final transcription = await _transcriptionService.transcribeFileAndPaste(path);
+
+      await _historyRepository.addEntry(HistoryEntry(
+        id: _historyRepository.idFromPath(path),
+        audioFilePath: path,
+        transcription: transcription,
+        timestamp: DateTime.now(),
+        success: true,
+      ));
+      _historyRepository.cleanup();
     } catch (e) {
       dprint('Error transcribing file: $e');
+
+      await _historyRepository.addEntry(HistoryEntry(
+        id: _historyRepository.idFromPath(path),
+        audioFilePath: path,
+        timestamp: DateTime.now(),
+        success: false,
+      ));
     } finally {
       setState(() => _indicatorState = IndicatorState.idle);
     }
@@ -343,6 +365,8 @@ class _DotWindowState extends State<DotWindow> with WindowListener {
                 expandedWindowSize: expandedWindowSize,
                 onHotkeyChanged: _onHotkeyChanged,
                 onRecordingStarted: _onRecordingStarted,
+                historyRepository: _historyRepository,
+                transcriptionService: _transcriptionService,
               ),
             Positioned(
               left: 0,

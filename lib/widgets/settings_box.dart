@@ -1,8 +1,13 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:open_vibrance/theme/app_colors.dart';
 import 'package:open_vibrance/widgets/constants.dart';
+import 'package:open_vibrance/widgets/hoverable_icon.dart';
 import 'package:open_vibrance/widgets/provider_settings/transcription_provider_configuration_view.dart';
 import 'package:open_vibrance/widgets/provider_settings/hotkeys_settings_view.dart';
+import 'package:open_vibrance/widgets/provider_settings/history_view.dart';
+import 'package:open_vibrance/services/history_repository.dart';
+import 'package:open_vibrance/services/transcription_service.dart';
 import 'package:flutter/services.dart';
 import 'package:hotkey_manager/hotkey_manager.dart';
 
@@ -17,12 +22,16 @@ class SettingsBox extends StatefulWidget {
   final void Function(List<HotKeyModifier> modifiers, List<PhysicalKeyboardKey> keys)
       onHotkeyChanged;
   final VoidCallback onRecordingStarted;
+  final HistoryRepository historyRepository;
+  final TranscriptionService transcriptionService;
 
   const SettingsBox({
     super.key,
     required this.expandedWindowSize,
     required this.onHotkeyChanged,
     required this.onRecordingStarted,
+    required this.historyRepository,
+    required this.transcriptionService,
   });
 
   final Size expandedWindowSize;
@@ -33,6 +42,8 @@ class SettingsBox extends StatefulWidget {
 
 class _SettingsBoxState extends State<SettingsBox> {
   SettingsItem? _selectedSetting;
+  bool _showToast = false;
+  Timer? _toastTimer;
 
   late final List<SettingsItem> _settingsItems;
 
@@ -53,11 +64,32 @@ class _SettingsBoxState extends State<SettingsBox> {
               onRecordingStarted: widget.onRecordingStarted,
             ),
       ),
+      SettingsItem(
+        title: 'History',
+        viewBuilder:
+            (context) => HistoryView(
+              historyRepository: widget.historyRepository,
+              transcriptionService: widget.transcriptionService,
+              onCopied: _showCopiedToast,
+            ),
+      ),
     ];
+  }
+
+  void _showCopiedToast() {
+    _toastTimer?.cancel();
+    setState(() => _showToast = true);
+    _toastTimer = Timer(const Duration(seconds: 3), _dismissToast);
+  }
+
+  void _dismissToast() {
+    _toastTimer?.cancel();
+    if (mounted) setState(() => _showToast = false);
   }
 
   @override
   void dispose() {
+    _toastTimer?.cancel();
     super.dispose();
   }
 
@@ -93,7 +125,29 @@ class _SettingsBoxState extends State<SettingsBox> {
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: AppColors.zinc700, width: 1),
       ),
-      child: child,
+      child: Stack(
+        children: [
+          child,
+          Positioned(
+            bottom: 16,
+            left: 16,
+            right: 16,
+            child: IgnorePointer(
+              ignoring: !_showToast,
+              child: AnimatedOpacity(
+                opacity: _showToast ? 1.0 : 0.0,
+                duration: const Duration(milliseconds: 250),
+                child: AnimatedSlide(
+                  offset: _showToast ? Offset.zero : const Offset(0, 0.3),
+                  duration: const Duration(milliseconds: 250),
+                  curve: Curves.easeOut,
+                  child: _Toast(onClose: _dismissToast),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -101,7 +155,7 @@ class _SettingsBoxState extends State<SettingsBox> {
     return Row(
       children: [
         if (_selectedSetting != null)
-          _HoverableIcon(
+          HoverableIcon(
             iconData: Icons.arrow_back_ios_new,
             onTap: () => setState(() => _selectedSetting = null),
             color: AppColors.zinc500,
@@ -141,41 +195,41 @@ class _SettingsBoxState extends State<SettingsBox> {
   }
 }
 
-class _HoverableIcon extends StatefulWidget {
-  final IconData iconData;
-  final VoidCallback onTap;
-  final Color color;
-  final Color? hoverColor;
+class _Toast extends StatelessWidget {
+  final VoidCallback onClose;
 
-  const _HoverableIcon({
-    required this.iconData,
-    required this.onTap,
-    this.color = Colors.white,
-    this.hoverColor,
-  });
-
-  @override
-  __HoverableIconState createState() => __HoverableIconState();
-}
-
-class __HoverableIconState extends State<_HoverableIcon> {
-  bool _isHovering = false;
+  const _Toast({required this.onClose});
 
   @override
   Widget build(BuildContext context) {
-    return MouseRegion(
-      cursor: _isHovering ? SystemMouseCursors.click : MouseCursor.defer,
-      onEnter: (_) => setState(() => _isHovering = true),
-      onExit: (_) => setState(() => _isHovering = false),
-      child: GestureDetector(
-        onTap: widget.onTap,
-        child: Icon(
-          widget.iconData,
-          color: _isHovering && widget.hoverColor != null
-              ? widget.hoverColor
-              : widget.color,
-          size: 20,
-        ),
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: AppColors.zinc800,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppColors.zinc700, width: 1),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.content_paste, color: AppColors.zinc400, size: 16),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              'Copied to clipboard',
+              style: TextStyle(
+                color: AppColors.zinc300,
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+          HoverableIcon(
+            iconData: Icons.close,
+            onTap: onClose,
+            color: AppColors.zinc500,
+            hoverColor: AppColors.zinc300,
+          ),
+        ],
       ),
     );
   }

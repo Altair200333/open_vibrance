@@ -43,7 +43,7 @@ class TranscriptionService {
     }
   }
 
-  Future<void> transcribeFileAndPaste(String path) async {
+  Future<String> transcribeFileAndPaste(String path, {bool paste = true}) async {
     final provider = await _getProvider();
     final bytes = await File(path).readAsBytes();
     final transcription = await provider.transcribe(bytes);
@@ -52,8 +52,12 @@ class TranscriptionService {
 
     await FlutterClipboard.copy(transcription);
 
-    // wait for it to settle in clipboard for a sec and call paste event
-    await Future.delayed(const Duration(milliseconds: 100));
-    await pasteContent();
+    if (paste) {
+      // wait for it to settle in clipboard for a sec and call paste event
+      await Future.delayed(const Duration(milliseconds: 100));
+      await pasteContent();
+    }
+
+    return transcription;
   }
 }
