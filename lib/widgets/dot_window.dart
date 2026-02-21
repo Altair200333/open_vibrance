@@ -39,6 +39,7 @@ class _DotWindowState extends State<DotWindow> with WindowListener {
   final ShortcutHelper _shortcutHelper = ShortcutHelper();
   final TranscriptionService _transcriptionService = TranscriptionService();
   Timer? _exitDebounce;
+  Offset _trackedPosition = Offset.zero;
 
   @override
   void initState() {
@@ -112,7 +113,8 @@ class _DotWindowState extends State<DotWindow> with WindowListener {
   void _onStopRecording() => _stopRecording();
 
   @override
-  void onWindowMoved() {
+  void onWindowMoved() async {
+    _trackedPosition = await windowManager.getPosition();
     setState(() {
       _dragging = false;
       _hoveringWindow = true;
@@ -145,11 +147,13 @@ class _DotWindowState extends State<DotWindow> with WindowListener {
       alwaysOnTop: true,
     );
 
+    _trackedPosition = offset;
+
     await windowManager.waitUntilReadyToShow(options, () async {
-      await windowManager.setHasShadow(false);
       await windowManager.setPosition(offset);
       await windowManager.setAlwaysOnTop(true);
       await windowManager.setAsFrameless();
+      await windowManager.setHasShadow(false);
 
       windowManager.addListener(this);
 
@@ -201,6 +205,7 @@ class _DotWindowState extends State<DotWindow> with WindowListener {
 
   void onMouseEnterIndicator(PointerEnterEvent event) {
     _updateIndicatorHoveringState();
+    _activateWindow();
   }
 
   void onMouseExitIndicator(PointerExitEvent event) {
@@ -210,7 +215,10 @@ class _DotWindowState extends State<DotWindow> with WindowListener {
   void onMouseEnterWindow(PointerEnterEvent event) {
     _exitDebounce?.cancel();
     setState(() => _hoveringWindow = true);
-    windowManager.setIgnoreMouseEvents(false);
+  }
+
+  Future<void> _activateWindow() async {
+    await windowManager.setIgnoreMouseEvents(false);
   }
 
   void onMouseExitWindow(PointerExitEvent event) {
@@ -222,9 +230,13 @@ class _DotWindowState extends State<DotWindow> with WindowListener {
     if (_indicatorState != IndicatorState.expanded && !_dragging) {
       _exitDebounce?.cancel();
       _exitDebounce = Timer(const Duration(milliseconds: 150), () {
-        windowManager.setIgnoreMouseEvents(true, forward: true);
+        _deactivateWindow();
       });
     }
+  }
+
+  Future<void> _deactivateWindow() async {
+    await windowManager.setIgnoreMouseEvents(true, forward: true);
   }
 
   Rect _getWindowBounds(Offset currentPosition, bool isExpanded) {
@@ -264,10 +276,8 @@ class _DotWindowState extends State<DotWindow> with WindowListener {
   }
 
   Future<void> _handleToggleSettingsBox() async {
-    var currentPosition = await windowManager.getPosition();
-
     var isExpanded = _indicatorState == IndicatorState.expanded;
-    var bounds = _getWindowBounds(currentPosition, isExpanded);
+    var bounds = _getWindowBounds(_trackedPosition, isExpanded);
 
     setState(() => _settingsBoxVisible = !isExpanded);
 
@@ -276,6 +286,7 @@ class _DotWindowState extends State<DotWindow> with WindowListener {
     await Future.delayed(const Duration(milliseconds: 50));
 
     // also ideally there should be delay + subtle animation to hide "jumping" of the indicator dot itself
+    _trackedPosition = Offset(bounds.left, bounds.top);
     windowManager.setMinimumSize(bounds.size);
     windowManager.setMaximumSize(bounds.size);
     windowManager.setBounds(bounds);
@@ -337,7 +348,7 @@ class _DotWindowState extends State<DotWindow> with WindowListener {
   AlignmentGeometry get _indicatorAlignment {
     return _indicatorState == IndicatorState.expanded
         ? Alignment.bottomCenter
-        : Alignment.center;
+        : Alignment.centerRight;
   }
 
   @override
@@ -354,10 +365,13 @@ class _DotWindowState extends State<DotWindow> with WindowListener {
               alignment: _indicatorAlignment,
               decoration: getWindowBoxDecoration(),
               child: Row(
+                mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  _buildDragHandle(),
-                  const SizedBox(width: 16),
+                  if (_showWindowContent) ...[
+                    _buildDragHandle(),
+                    const SizedBox(width: 16),
+                  ],
                   DotIndicator(
                     state: _indicatorState,
                     onTap: onIndicatorTap,
