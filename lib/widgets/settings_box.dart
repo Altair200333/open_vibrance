@@ -10,12 +10,14 @@ import 'package:open_vibrance/services/history_repository.dart';
 import 'package:open_vibrance/services/transcription_service.dart';
 import 'package:flutter/services.dart';
 import 'package:hotkey_manager/hotkey_manager.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 class SettingsItem {
   final String title;
+  final IconData icon;
   final WidgetBuilder viewBuilder;
 
-  SettingsItem({required this.title, required this.viewBuilder});
+  SettingsItem({required this.title, required this.icon, required this.viewBuilder});
 }
 
 class SettingsBox extends StatefulWidget {
@@ -54,10 +56,12 @@ class _SettingsBoxState extends State<SettingsBox> {
     _settingsItems = [
       SettingsItem(
         title: 'Transcription Provider',
+        icon: LucideIcons.settings,
         viewBuilder: (context) => TranscriptionProviderConfigurationView(),
       ),
       SettingsItem(
         title: 'Hotkeys',
+        icon: LucideIcons.keyboard,
         viewBuilder:
             (context) => HotkeysSettingsView(
               onHotkeyChanged: widget.onHotkeyChanged,
@@ -66,6 +70,7 @@ class _SettingsBoxState extends State<SettingsBox> {
       ),
       SettingsItem(
         title: 'History',
+        icon: LucideIcons.history,
         viewBuilder:
             (context) => HistoryView(
               historyRepository: widget.historyRepository,
@@ -174,8 +179,8 @@ class _SettingsBoxState extends State<SettingsBox> {
     );
   }
 
-  Widget _buildMenuItem({required String title, required VoidCallback onTap}) {
-    return _MenuItem(title: title, onTap: onTap);
+  Widget _buildMenuItem({required String title, required IconData icon, required VoidCallback onTap}) {
+    return _MenuItem(title: title, icon: icon, onTap: onTap);
   }
 
   Widget _buildMenu() {
@@ -187,6 +192,7 @@ class _SettingsBoxState extends State<SettingsBox> {
               padding: const EdgeInsets.only(bottom: 8.0),
               child: _buildMenuItem(
                 title: item.title,
+                icon: item.icon,
                 onTap: () => setState(() => _selectedSetting = item),
               ),
             );
@@ -237,9 +243,10 @@ class _Toast extends StatelessWidget {
 
 class _MenuItem extends StatefulWidget {
   final String title;
+  final IconData icon;
   final VoidCallback onTap;
 
-  const _MenuItem({required this.title, required this.onTap});
+  const _MenuItem({required this.title, required this.icon, required this.onTap});
 
   @override
   __MenuItemState createState() => __MenuItemState();
@@ -267,15 +274,32 @@ class __MenuItemState extends State<_MenuItem> {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              AnimatedDefaultTextStyle(
-                duration: const Duration(milliseconds: 250),
-                curve: Curves.easeOut,
-                style: TextStyle(
-                  color: _isHovering ? Colors.white : AppColors.zinc300,
-                  fontWeight: FontWeight.w500,
-                  fontSize: 14,
-                ),
-                child: Text(widget.title),
+              Row(
+                children: [
+                  TweenAnimationBuilder<Color?>(
+                    tween: ColorTween(
+                      end: _isHovering ? AppColors.zinc300 : AppColors.zinc500,
+                    ),
+                    duration: const Duration(milliseconds: 250),
+                    curve: Curves.easeOut,
+                    builder: (context, color, _) => Icon(
+                      widget.icon,
+                      color: color,
+                      size: 18,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  AnimatedDefaultTextStyle(
+                    duration: const Duration(milliseconds: 250),
+                    curve: Curves.easeOut,
+                    style: TextStyle(
+                      color: _isHovering ? Colors.white : AppColors.zinc300,
+                      fontWeight: FontWeight.w500,
+                      fontSize: 14,
+                    ),
+                    child: Text(widget.title),
+                  ),
+                ],
               ),
               TweenAnimationBuilder<Color?>(
                 tween: ColorTween(
