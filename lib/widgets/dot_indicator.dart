@@ -166,7 +166,7 @@ class _DotIndicatorState extends State<DotIndicator> {
         onHover: widget.onHover,
         child: SizedBox(
           width: kDotSize * 2.5,
-          height: kDotSize,
+          height: kDotSize * 1.5,
           child: Center(child: _buildIndicator(width, height)),
         ),
       ),

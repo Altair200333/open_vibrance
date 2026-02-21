@@ -15,7 +15,6 @@ import 'package:open_vibrance/widgets/settings_box.dart' show SettingsBox;
 import 'package:open_vibrance/widgets/constants.dart';
 import 'package:flutter/foundation.dart' show defaultTargetPlatform;
 import 'package:open_vibrance/services/hotkey_repository.dart';
-
 class DotWindow extends StatefulWidget {
   const DotWindow({super.key});
 
@@ -39,6 +38,7 @@ class _DotWindowState extends State<DotWindow> with WindowListener {
 
   final ShortcutHelper _shortcutHelper = ShortcutHelper();
   final TranscriptionService _transcriptionService = TranscriptionService();
+  Timer? _exitDebounce;
 
   @override
   void initState() {
@@ -122,6 +122,7 @@ class _DotWindowState extends State<DotWindow> with WindowListener {
 
   @override
   void onWindowMove() {
+    _exitDebounce?.cancel();
     if (!_dragging) {
       setState(() => _dragging = true);
     }
@@ -147,7 +148,6 @@ class _DotWindowState extends State<DotWindow> with WindowListener {
     await windowManager.waitUntilReadyToShow(options, () async {
       await windowManager.setHasShadow(false);
       await windowManager.setPosition(offset);
-      await windowManager.setIgnoreMouseEvents(false);
       await windowManager.setAlwaysOnTop(true);
       await windowManager.setAsFrameless();
 
@@ -158,11 +158,13 @@ class _DotWindowState extends State<DotWindow> with WindowListener {
         color: Colors.transparent,
       );
       await windowManager.show();
+      await windowManager.setIgnoreMouseEvents(true, forward: true);
     });
   }
 
   @override
   void dispose() {
+    _exitDebounce?.cancel();
     _audioService.dispose();
     windowManager.removeListener(this);
     super.dispose();
@@ -206,7 +208,9 @@ class _DotWindowState extends State<DotWindow> with WindowListener {
   }
 
   void onMouseEnterWindow(PointerEnterEvent event) {
+    _exitDebounce?.cancel();
     setState(() => _hoveringWindow = true);
+    windowManager.setIgnoreMouseEvents(false);
   }
 
   void onMouseExitWindow(PointerExitEvent event) {
@@ -215,6 +219,12 @@ class _DotWindowState extends State<DotWindow> with WindowListener {
       _hoveringIndicator = false;
       _showWindowContent = false;
     });
+    if (_indicatorState != IndicatorState.expanded && !_dragging) {
+      _exitDebounce?.cancel();
+      _exitDebounce = Timer(const Duration(milliseconds: 150), () {
+        windowManager.setIgnoreMouseEvents(true, forward: true);
+      });
+    }
   }
 
   Rect _getWindowBounds(Offset currentPosition, bool isExpanded) {
@@ -271,6 +281,11 @@ class _DotWindowState extends State<DotWindow> with WindowListener {
     windowManager.setBounds(bounds);
 
     _toggleIndicatorExpandedState();
+
+    // Restore click-through after collapsing back to idle
+    if (isExpanded) {
+      await windowManager.setIgnoreMouseEvents(true, forward: true);
+    }
   }
 
   void _toggleIndicatorExpandedState() {
