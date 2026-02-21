@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:open_vibrance/theme/app_colors.dart';
+import 'package:open_vibrance/theme/app_color_theme.dart';
 import 'package:open_vibrance/widgets/constants.dart';
 import 'package:open_vibrance/widgets/dot_indicator/recording_dot.dart';
 import 'package:open_vibrance/widgets/dot_indicator/pulse_dots.dart';
@@ -73,69 +73,67 @@ class DotIndicator extends StatefulWidget {
     }
   }
 
-  static const _shadow = [
-    BoxShadow(color: AppColors.shadow, blurRadius: 6, spreadRadius: 1),
-  ];
+  BoxDecoration _indicatorDotDecoration(AppColorTheme colors) {
+    final shadow = [BoxShadow(color: colors.shadow, blurRadius: 6, spreadRadius: 1)];
 
-  BoxDecoration get _indicatorDotDecoration {
     switch (state) {
       case IndicatorState.recording:
         var borderW = 1 + _getNormalizedVolume() * 2;
         return BoxDecoration(
-          color: AppColors.errorBg,
+          color: colors.errorBg,
           borderRadius: BorderRadius.circular(kDotSize),
-          border: Border.all(color: AppColors.textOnPrimary, width: borderW),
-          boxShadow: _shadow,
+          border: Border.all(color: colors.textOnPrimary, width: borderW),
+          boxShadow: shadow,
         );
       case IndicatorState.transcribing:
         return BoxDecoration(
-          color: AppColors.surfaceElevated,
+          color: colors.surfaceElevated,
           borderRadius: BorderRadius.circular(5),
-          border: Border.all(color: AppColors.textOnPrimary, width: 2),
-          boxShadow: _shadow,
+          border: Border.all(color: colors.textOnPrimary, width: 2),
+          boxShadow: shadow,
         );
       case IndicatorState.error:
         return BoxDecoration(
-          color: AppColors.errorBg,
+          color: colors.errorBg,
           borderRadius: BorderRadius.circular(5),
-          border: Border.all(color: AppColors.textOnPrimary, width: 2),
-          boxShadow: _shadow,
+          border: Border.all(color: colors.textOnPrimary, width: 2),
+          boxShadow: shadow,
         );
       case IndicatorState.expanded:
         return BoxDecoration(
-          color: AppColors.surfaceElevated,
+          color: colors.surfaceElevated,
           borderRadius: BorderRadius.circular(kDotSize),
-          border: Border.all(color: AppColors.textOnPrimary, width: 2),
-          boxShadow: _shadow,
+          border: Border.all(color: colors.textOnPrimary, width: 2),
+          boxShadow: shadow,
         );
       case IndicatorState.idle:
         return BoxDecoration(
-          color: AppColors.surfaceElevated,
+          color: colors.surfaceElevated,
           borderRadius: BorderRadius.circular(isHovered ? 5 : 10),
-          border: Border.all(color: AppColors.textOnPrimary, width: 2),
-          boxShadow: _shadow,
+          border: Border.all(color: colors.textOnPrimary, width: 2),
+          boxShadow: shadow,
         );
       default:
         return BoxDecoration(
-          color: AppColors.border,
+          color: colors.border,
           borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: AppColors.textOnPrimary.withAlpha(180), width: 1.5),
+          border: Border.all(color: colors.textOnPrimary.withAlpha(180), width: 1.5),
         );
     }
   }
 }
 
 class _DotIndicatorState extends State<DotIndicator> {
-  Widget? get _indicatorDotContent {
+  Widget? _indicatorDotContent(AppColorTheme colors) {
     switch (widget.state) {
       case IndicatorState.recording:
         return null;
       case IndicatorState.transcribing:
         return const PulseDots();
       case IndicatorState.error:
-        return Icon(Icons.close, color: AppColors.textOnPrimary, size: kDotSize * 0.55);
+        return Icon(Icons.close, color: colors.textOnPrimary, size: kDotSize * 0.55);
       case IndicatorState.expanded:
-        return Icon(Icons.close, color: AppColors.textOnPrimary, size: kDotSize * 0.65);
+        return Icon(Icons.close, color: colors.textOnPrimary, size: kDotSize * 0.65);
       case IndicatorState.idle:
         return IdleDots(isHovered: widget.isHovered);
       default:
@@ -143,7 +141,7 @@ class _DotIndicatorState extends State<DotIndicator> {
     }
   }
 
-  Widget _buildIndicator(double width, double height) {
+  Widget _buildIndicator(double width, double height, AppColorTheme colors) {
     if (widget.state == IndicatorState.recording) {
       // normalize volume to 0.0-1.0 based on dB range
       final normalized = widget._getNormalizedVolume();
@@ -155,7 +153,7 @@ class _DotIndicatorState extends State<DotIndicator> {
 
       return RecordingDot(
         scale: sizeScale,
-        decoration: widget._indicatorDotDecoration,
+        decoration: widget._indicatorDotDecoration(colors),
       );
     }
     final container = AnimatedContainer(
@@ -163,8 +161,8 @@ class _DotIndicatorState extends State<DotIndicator> {
       curve: Curves.easeInOutCubic,
       width: width,
       height: height,
-      decoration: widget._indicatorDotDecoration,
-      child: _indicatorDotContent,
+      decoration: widget._indicatorDotDecoration(colors),
+      child: _indicatorDotContent(colors),
     );
     if (widget.state == IndicatorState.error) {
       return ErrorShake(child: container);
@@ -174,6 +172,7 @@ class _DotIndicatorState extends State<DotIndicator> {
 
   @override
   Widget build(BuildContext context) {
+    final colors = context.colors;
     final width = widget._indicatorDotWidth;
     final height = widget._indicatorDotHeight;
     return GestureDetector(
@@ -186,7 +185,7 @@ class _DotIndicatorState extends State<DotIndicator> {
         child: SizedBox(
           width: kDotSize * 2.5,
           height: kDotSize * 1.5,
-          child: Center(child: _buildIndicator(width, height)),
+          child: Center(child: _buildIndicator(width, height, colors)),
         ),
       ),
     );

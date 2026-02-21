@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:dropdown_button2/dropdown_button2.dart';
 import 'package:open_vibrance/services/storage_service.dart';
 import 'package:open_vibrance/transcription/elevenlabs_transcription_provider.dart';
-import 'package:open_vibrance/theme/app_colors.dart';
+import 'package:open_vibrance/theme/app_color_theme.dart';
 import 'package:open_vibrance/theme/app_styles.dart';
 import 'package:open_vibrance/widgets/constants.dart';
 import 'package:open_vibrance/transcription/types.dart';
@@ -75,34 +75,36 @@ class _ElevenLabsSettingsWidgetState extends State<ElevenLabsSettingsWidget> {
 
   @override
   Widget build(BuildContext context) {
+    final colors = context.colors;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
           'ElevenLabs API key',
-          style: TextStyle(color: AppColors.textSecondary, fontSize: kFontSizeMd, fontWeight: FontWeight.w500),
+          style: TextStyle(color: colors.textSecondary, fontSize: kFontSizeMd, fontWeight: FontWeight.w500),
         ),
         SizedBox(height: 8),
         Text(
           'Uses Scribe model from ElevenLabs (subscription required)',
-          style: TextStyle(color: AppColors.textHint, fontSize: kFontSizeSm),
+          style: TextStyle(color: colors.textHint, fontSize: kFontSizeSm),
         ),
         SizedBox(height: 8),
         TextField(
           controller: _apiKeyController,
           decoration: InputDecoration(hintText: 'Enter your API key'),
-          style: TextStyle(color: AppColors.textPrimary),
+          style: TextStyle(color: colors.textPrimary),
           onChanged: _onElevenLabsApiKeyChanged,
         ),
         SizedBox(height: 32),
         Text(
           'ElevenLabs Model',
-          style: TextStyle(color: AppColors.textSecondary, fontSize: kFontSizeMd, fontWeight: FontWeight.w500),
+          style: TextStyle(color: colors.textSecondary, fontSize: kFontSizeMd, fontWeight: FontWeight.w500),
         ),
         SizedBox(height: 8),
         Text(
           'Select the model to use for transcription',
-          style: TextStyle(color: AppColors.textHint, fontSize: kFontSizeSm),
+          style: TextStyle(color: colors.textHint, fontSize: kFontSizeSm),
         ),
         SizedBox(height: 8),
         DropdownButtonHideUnderline(
@@ -114,14 +116,14 @@ class _ElevenLabsSettingsWidgetState extends State<ElevenLabsSettingsWidget> {
                 value: model,
                 child: Text(
                   model.displayName,
-                  style: TextStyle(color: AppColors.textPrimary, fontSize: kFontSizeLg),
+                  style: TextStyle(color: colors.textPrimary, fontSize: kFontSizeLg),
                 ),
               ),
             ).toList(),
-            buttonStyleData: AppStyles.dropdownButton,
-            dropdownStyleData: AppStyles.dropdownMenu,
-            iconStyleData: AppStyles.dropdownIcon,
-            menuItemStyleData: AppStyles.dropdownMenuItem,
+            buttonStyleData: AppStyles.dropdownButton(colors),
+            dropdownStyleData: AppStyles.dropdownMenu(colors),
+            iconStyleData: AppStyles.dropdownIcon(colors),
+            menuItemStyleData: AppStyles.dropdownMenuItem(colors),
           ),
         ),
       ],

@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:open_vibrance/theme/app_colors.dart';
+import 'package:open_vibrance/theme/app_color_theme.dart';
 import 'package:open_vibrance/widgets/constants.dart';
 import 'dart:math' as math;
 
@@ -62,6 +62,8 @@ class _PulseDotsState extends State<PulseDots>
 
   @override
   Widget build(BuildContext context) {
+    final colors = context.colors;
+
     return AnimatedBuilder(
       animation: _controller,
       builder: (context, child) {
@@ -75,8 +77,8 @@ class _PulseDotsState extends State<PulseDots>
                 width: dotSize,
                 height: dotSize,
                 margin: EdgeInsets.symmetric(horizontal: widget.spacing),
-                decoration: const BoxDecoration(
-                  color: AppColors.textOnPrimary,
+                decoration: BoxDecoration(
+                  color: colors.textOnPrimary,
                   shape: BoxShape.circle,
                 ),
               ),

@@ -1,12 +1,12 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
-import 'package:open_vibrance/theme/app_colors.dart';
+import 'package:open_vibrance/theme/app_color_theme.dart';
 import 'package:open_vibrance/widgets/constants.dart';
 
 class HoverableIcon extends StatefulWidget {
   final IconData iconData;
   final VoidCallback onTap;
-  final Color color;
+  final Color? color;
   final Color? hoverColor;
   final double size;
   final String? tooltip;
@@ -15,7 +15,7 @@ class HoverableIcon extends StatefulWidget {
     super.key,
     required this.iconData,
     required this.onTap,
-    this.color = AppColors.iconDefault,
+    this.color,
     this.hoverColor,
     this.size = 20,
     this.tooltip,
@@ -30,9 +30,10 @@ class _HoverableIconState extends State<HoverableIcon> {
 
   @override
   Widget build(BuildContext context) {
+    final effectiveColor = widget.color ?? context.colors.iconDefault;
     final targetColor = _isHovering && widget.hoverColor != null
         ? widget.hoverColor!
-        : widget.color;
+        : effectiveColor;
 
     final minHitArea = math.max(widget.size, 24.0);
 

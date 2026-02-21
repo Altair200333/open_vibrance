@@ -1,11 +1,12 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:open_vibrance/theme/app_colors.dart';
+import 'package:open_vibrance/theme/app_color_theme.dart';
 import 'package:open_vibrance/widgets/constants.dart';
 import 'package:open_vibrance/widgets/hoverable_icon.dart';
 import 'package:open_vibrance/widgets/provider_settings/transcription_provider_configuration_view.dart';
 import 'package:open_vibrance/widgets/provider_settings/hotkeys_settings_view.dart';
 import 'package:open_vibrance/widgets/provider_settings/history_view.dart';
+import 'package:open_vibrance/widgets/provider_settings/theme_settings_view.dart';
 import 'package:open_vibrance/services/history_repository.dart';
 import 'package:open_vibrance/services/transcription_service.dart';
 import 'package:flutter/services.dart';
@@ -78,6 +79,11 @@ class _SettingsBoxState extends State<SettingsBox> {
               onCopied: _showCopiedToast,
             ),
       ),
+      SettingsItem(
+        title: 'Themes',
+        icon: LucideIcons.palette,
+        viewBuilder: (context) => const ThemeSettingsView(),
+      ),
     ];
   }
 
@@ -100,20 +106,23 @@ class _SettingsBoxState extends State<SettingsBox> {
 
   @override
   Widget build(BuildContext context) {
+    final colors = context.colors;
+
     return Positioned(
       bottom: kDotSize * 2,
       left: kDotSize * 2.5,
       child: _buildSettingsContainer(
+        colors: colors,
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(16.0),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _buildHeader(),
+              _buildHeader(colors),
               SizedBox(height: 16),
               _selectedSetting != null
                   ? _selectedSetting!.viewBuilder(context)
-                  : _buildMenu(),
+                  : _buildMenu(colors),
             ],
           ),
         ),
@@ -121,14 +130,14 @@ class _SettingsBoxState extends State<SettingsBox> {
     );
   }
 
-  Widget _buildSettingsContainer({required Widget child}) {
+  Widget _buildSettingsContainer({required AppColorTheme colors, required Widget child}) {
     return Container(
       width: widget.expandedWindowSize.width - kDotSize * 3,
       height: widget.expandedWindowSize.height - kDotSize * 3,
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: colors.surface,
         borderRadius: BorderRadius.circular(kRadiusLg),
-        border: Border.all(color: AppColors.border, width: 1),
+        border: Border.all(color: colors.border, width: 1),
       ),
       child: Stack(
         children: [
@@ -156,21 +165,21 @@ class _SettingsBoxState extends State<SettingsBox> {
     );
   }
 
-  Widget _buildHeader() {
+  Widget _buildHeader(AppColorTheme colors) {
     return Row(
       children: [
         if (_selectedSetting != null)
           HoverableIcon(
             iconData: Icons.arrow_back_ios_new,
             onTap: () => setState(() => _selectedSetting = null),
-            color: AppColors.iconDefault,
-            hoverColor: AppColors.iconHover,
+            color: colors.iconDefault,
+            hoverColor: colors.iconHover,
           ),
         if (_selectedSetting != null) SizedBox(width: 8),
         Text(
           _selectedSetting?.title ?? 'Settings',
           style: TextStyle(
-            color: AppColors.textPrimary,
+            color: colors.textPrimary,
             fontSize: kFontSizeXl,
             fontWeight: FontWeight.w600,
           ),
@@ -179,18 +188,14 @@ class _SettingsBoxState extends State<SettingsBox> {
     );
   }
 
-  Widget _buildMenuItem({required String title, required IconData icon, required VoidCallback onTap}) {
-    return _MenuItem(title: title, icon: icon, onTap: onTap);
-  }
-
-  Widget _buildMenu() {
+  Widget _buildMenu(AppColorTheme colors) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children:
           _settingsItems.map((item) {
             return Padding(
               padding: const EdgeInsets.only(bottom: 8.0),
-              child: _buildMenuItem(
+              child: _MenuItem(
                 title: item.title,
                 icon: item.icon,
                 onTap: () => setState(() => _selectedSetting = item),
@@ -208,22 +213,24 @@ class _Toast extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = context.colors;
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
-        color: AppColors.surfaceElevated,
+        color: colors.surfaceElevated,
         borderRadius: BorderRadius.circular(kRadiusMd),
-        border: Border.all(color: AppColors.border, width: 1),
+        border: Border.all(color: colors.border, width: 1),
       ),
       child: Row(
         children: [
-          Icon(Icons.content_paste, color: AppColors.textSecondary, size: 16),
+          Icon(Icons.content_paste, color: colors.textSecondary, size: 16),
           const SizedBox(width: 10),
           Expanded(
             child: Text(
               'Copied to clipboard',
               style: TextStyle(
-                color: AppColors.textPrimary,
+                color: colors.textPrimary,
                 fontSize: kFontSizeMd,
                 fontWeight: FontWeight.w500,
               ),
@@ -232,8 +239,8 @@ class _Toast extends StatelessWidget {
           HoverableIcon(
             iconData: Icons.close,
             onTap: onClose,
-            color: AppColors.iconDefault,
-            hoverColor: AppColors.iconHover,
+            color: colors.iconDefault,
+            hoverColor: colors.iconHover,
           ),
         ],
       ),
@@ -257,6 +264,8 @@ class __MenuItemState extends State<_MenuItem> {
 
   @override
   Widget build(BuildContext context) {
+    final colors = context.colors;
+
     return MouseRegion(
       cursor: _isHovering ? SystemMouseCursors.click : MouseCursor.defer,
       onEnter: (_) => setState(() => _isHovering = true),
@@ -267,7 +276,7 @@ class __MenuItemState extends State<_MenuItem> {
           duration: kHoverDuration,
           curve: kHoverCurve,
           decoration: BoxDecoration(
-            color: _isHovering ? AppColors.surfaceElevated : AppColors.surface,
+            color: _isHovering ? colors.surfaceElevated : colors.surface,
             borderRadius: BorderRadius.circular(kRadiusMd),
           ),
           padding: EdgeInsets.symmetric(vertical: 12.0, horizontal: 16.0),
@@ -278,7 +287,7 @@ class __MenuItemState extends State<_MenuItem> {
                 children: [
                   TweenAnimationBuilder<Color?>(
                     tween: ColorTween(
-                      end: _isHovering ? AppColors.iconHover : AppColors.iconDefault,
+                      end: _isHovering ? colors.iconHover : colors.iconDefault,
                     ),
                     duration: kHoverDuration,
                     curve: kHoverCurve,
@@ -293,7 +302,7 @@ class __MenuItemState extends State<_MenuItem> {
                     duration: kHoverDuration,
                     curve: kHoverCurve,
                     style: TextStyle(
-                      color: _isHovering ? AppColors.textOnPrimary : AppColors.textPrimary,
+                      color: _isHovering ? colors.textOnPrimary : colors.textPrimary,
                       fontWeight: FontWeight.w500,
                       fontSize: kFontSizeLg,
                     ),
@@ -303,7 +312,7 @@ class __MenuItemState extends State<_MenuItem> {
               ),
               TweenAnimationBuilder<Color?>(
                 tween: ColorTween(
-                  end: _isHovering ? AppColors.iconHover : AppColors.iconDefault,
+                  end: _isHovering ? colors.iconHover : colors.iconDefault,
                 ),
                 duration: kHoverDuration,
                 curve: kHoverCurve,

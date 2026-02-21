@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:hotkey_manager/hotkey_manager.dart';
 import 'package:open_vibrance/services/hotkey_repository.dart';
-import 'package:open_vibrance/theme/app_colors.dart';
+import 'package:open_vibrance/theme/app_color_theme.dart';
 import 'package:open_vibrance/widgets/constants.dart';
 import 'package:open_vibrance/widgets/provider_settings/hotkey_constants.dart';
 
@@ -159,30 +159,32 @@ class _HotkeysSettingsViewState extends State<HotkeysSettingsView> {
 
   bool get _hasError => _isRecording && _liveError != null;
 
-  Color _getBorderColor() {
-    if (_hasError) return AppColors.error;
-    if (_isRecording) return AppColors.borderFocus;
-    if (_isHoveringField) return AppColors.borderHover;
-    return AppColors.border;
+  Color _getBorderColor(AppColorTheme colors) {
+    if (_hasError) return colors.error;
+    if (_isRecording) return colors.borderFocus;
+    if (_isHoveringField) return colors.borderHover;
+    return colors.border;
   }
 
-  Color _getTextColor() {
-    if (_hasError) return AppColors.error;
+  Color _getTextColor(AppColorTheme colors) {
+    if (_hasError) return colors.error;
     if (_isRecording) {
-      return _pressedKeys.isEmpty ? AppColors.textHint : AppColors.textPrimary;
+      return _pressedKeys.isEmpty ? colors.textHint : colors.textPrimary;
     }
-    return AppColors.textPrimary;
+    return colors.textPrimary;
   }
 
   @override
   Widget build(BuildContext context) {
+    final colors = context.colors;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
           'Record hotkey',
           style: TextStyle(
-            color: AppColors.textSecondary,
+            color: colors.textSecondary,
             fontSize: kFontSizeMd,
             fontWeight: FontWeight.w500,
           ),
@@ -190,7 +192,7 @@ class _HotkeysSettingsViewState extends State<HotkeysSettingsView> {
         SizedBox(height: 8),
         Text(
           'Click the field below and press modifier + key',
-          style: TextStyle(color: AppColors.textHint, fontSize: kFontSizeSm),
+          style: TextStyle(color: colors.textHint, fontSize: kFontSizeSm),
         ),
         SizedBox(height: 12),
         Focus(
@@ -213,9 +215,9 @@ class _HotkeysSettingsViewState extends State<HotkeysSettingsView> {
                 curve: kHoverCurve,
                 padding: EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                 decoration: BoxDecoration(
-                  color: AppColors.surfaceElevated,
+                  color: colors.surfaceElevated,
                   borderRadius: BorderRadius.circular(kRadiusMd),
-                  border: Border.all(color: _getBorderColor(), width: 1),
+                  border: Border.all(color: _getBorderColor(colors), width: 1),
                 ),
                 child: Row(
                   children: [
@@ -224,7 +226,7 @@ class _HotkeysSettingsViewState extends State<HotkeysSettingsView> {
                           ? Icons.fiber_manual_record
                           : Icons.keyboard_outlined,
                       color:
-                          _isRecording ? AppColors.error : AppColors.iconDefault,
+                          _isRecording ? colors.error : colors.iconDefault,
                       size: 16,
                     ),
                     SizedBox(width: 10),
@@ -232,7 +234,7 @@ class _HotkeysSettingsViewState extends State<HotkeysSettingsView> {
                       child: Text(
                         _getDisplayText(),
                         style: TextStyle(
-                          color: _getTextColor(),
+                          color: _getTextColor(colors),
                           fontSize: kFontSizeLg,
                         ),
                       ),
@@ -250,8 +252,8 @@ class _HotkeysSettingsViewState extends State<HotkeysSettingsView> {
                             Icons.close,
                             color:
                                 _isHoveringClose
-                                    ? AppColors.iconHover
-                                    : AppColors.iconDefault,
+                                    ? colors.iconHover
+                                    : colors.iconDefault,
                             size: 16,
                           ),
                         ),
@@ -268,7 +270,7 @@ class _HotkeysSettingsViewState extends State<HotkeysSettingsView> {
             _liveError ?? 'Press Esc to cancel',
             style: TextStyle(
               color:
-                  _liveError != null ? AppColors.error : AppColors.textHint,
+                  _liveError != null ? colors.error : colors.textHint,
               fontSize: kFontSizeXs,
             ),
           ),
