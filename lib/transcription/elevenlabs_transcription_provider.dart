@@ -8,6 +8,7 @@ import 'package:open_vibrance/services/storage_service.dart';
 import 'package:open_vibrance/utils/common.dart';
 
 enum ElevenLabsModel {
+  scribeV2('scribe_v2'),
   scribeV1('scribe_v1'),
   scribeV1Experimental('scribe_v1_experimental');
 
@@ -18,6 +19,8 @@ enum ElevenLabsModel {
 extension ElevenLabsModelExtension on ElevenLabsModel {
   String get displayName {
     switch (this) {
+      case ElevenLabsModel.scribeV2:
+        return 'Scribe v2';
       case ElevenLabsModel.scribeV1:
         return 'Scribe v1';
       case ElevenLabsModel.scribeV1Experimental:
@@ -28,7 +31,7 @@ extension ElevenLabsModelExtension on ElevenLabsModel {
   static ElevenLabsModel fromKey(String? key) {
     return ElevenLabsModel.values.firstWhere(
       (e) => e.modelId == key,
-      orElse: () => ElevenLabsModel.scribeV1Experimental,
+      orElse: () => ElevenLabsModel.scribeV2,
     );
   }
 }
