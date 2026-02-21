@@ -242,70 +242,46 @@ class _DotWindowState extends State<DotWindow> with WindowListener {
   }
 
   Rect _getWindowBounds(Offset currentPosition, bool isExpanded) {
-    // pretty hacky way, but it got it working
-    // idea is to keep the main indicator in the same spot on the screen while chaning size and position of the window itself
-    // it has to account for borders, alignment, dot size and arbitrary constant offset
+    // Row is pinned to bottom-left via Positioned, so only Y shifts.
+    final deltaY = expandedWindowSize.height - initialWindowSize.height;
 
-    Size newSize;
-    Offset newPosition;
     if (isExpanded) {
-      newPosition = Offset(
+      // Collapsing: large -> small, window moves down
+      return Rect.fromLTWH(
         currentPosition.dx,
-        currentPosition.dy +
-            expandedWindowSize.height -
-            initialWindowSize.height * 0.5 -
-            kDotSize +
-            4,
+        currentPosition.dy + deltaY,
+        initialWindowSize.width,
+        initialWindowSize.height,
       );
-      newSize = initialWindowSize;
     } else {
-      newPosition = Offset(
+      // Expanding: small -> large, window moves up
+      return Rect.fromLTWH(
         currentPosition.dx,
-        currentPosition.dy +
-            initialWindowSize.height * 0.5 -
-            expandedWindowSize.height +
-            kDotSize -
-            3.5,
+        currentPosition.dy - deltaY,
+        expandedWindowSize.width,
+        expandedWindowSize.height,
       );
-      newSize = expandedWindowSize;
     }
-    return Rect.fromLTWH(
-      newPosition.dx,
-      newPosition.dy,
-      newSize.width,
-      newSize.height,
-    );
   }
 
   Future<void> _handleToggleSettingsBox() async {
     var isExpanded = _indicatorState == IndicatorState.expanded;
     var bounds = _getWindowBounds(_trackedPosition, isExpanded);
 
-    setState(() => _settingsBoxVisible = !isExpanded);
-
-    // add small delay between showing settings box and resizing window
-    // to prevent settings box from flickering
-    await Future.delayed(const Duration(milliseconds: 50));
-
-    // also ideally there should be delay + subtle animation to hide "jumping" of the indicator dot itself
     _trackedPosition = Offset(bounds.left, bounds.top);
-    windowManager.setMinimumSize(bounds.size);
-    windowManager.setMaximumSize(bounds.size);
-    windowManager.setBounds(bounds);
+    setState(() {
+      _settingsBoxVisible = !isExpanded;
+      _indicatorState = isExpanded ? IndicatorState.idle : IndicatorState.expanded;
+    });
 
-    _toggleIndicatorExpandedState();
+    await windowManager.setMinimumSize(bounds.size);
+    await windowManager.setMaximumSize(bounds.size);
+    await windowManager.setBounds(bounds);
 
     // Restore click-through after collapsing back to idle
     if (isExpanded) {
       await windowManager.setIgnoreMouseEvents(true, forward: true);
     }
-  }
-
-  void _toggleIndicatorExpandedState() {
-    var isExpanded = _indicatorState == IndicatorState.expanded;
-    var newState = isExpanded ? IndicatorState.idle : IndicatorState.expanded;
-
-    setState(() => _indicatorState = newState);
   }
 
   bool _canToggleSettingsBox() {
@@ -347,12 +323,6 @@ class _DotWindowState extends State<DotWindow> with WindowListener {
     }
   }
 
-  AlignmentGeometry get _indicatorAlignment {
-    return _indicatorState == IndicatorState.expanded
-        ? Alignment.bottomCenter
-        : Alignment.centerRight;
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -363,34 +333,42 @@ class _DotWindowState extends State<DotWindow> with WindowListener {
         child: Stack(
           clipBehavior: Clip.none,
           children: [
-            Container(
-              alignment: _indicatorAlignment,
-              decoration: getWindowBoxDecoration(),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  if (_showWindowContent) ...[
-                    _buildDragHandle(),
-                    const SizedBox(width: 16),
-                  ],
-                  DotIndicator(
-                    state: _indicatorState,
-                    onTap: onIndicatorTap,
-                    onEnter: onMouseEnterIndicator,
-                    onExit: onMouseExitIndicator,
-                    onHover: onHoverIndicator,
-                    volume: _lastAmplitude,
-                    isHovered: _hoveringIndicator,
-                  ),
-                ],
-              ),
-            ),
+            Container(decoration: getWindowBoxDecoration()),
             if (_settingsBoxVisible)
               SettingsBox(
                 expandedWindowSize: expandedWindowSize,
                 onHotkeyChanged: _onHotkeyChanged,
               ),
+            Positioned(
+              left: 0,
+              bottom: 0,
+              child: SizedBox(
+                width: initialWindowSize.width,
+                height: initialWindowSize.height,
+                child: Container(
+                  alignment: Alignment.centerRight,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      if (_showWindowContent) ...[
+                        _buildDragHandle(),
+                        const SizedBox(width: 16),
+                      ],
+                      DotIndicator(
+                        state: _indicatorState,
+                        onTap: onIndicatorTap,
+                        onEnter: onMouseEnterIndicator,
+                        onExit: onMouseExitIndicator,
+                        onHover: onHoverIndicator,
+                        volume: _lastAmplitude,
+                        isHovered: _hoveringIndicator,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
           ],
         ),
       ),
