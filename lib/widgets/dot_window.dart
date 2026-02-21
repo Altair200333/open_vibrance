@@ -383,10 +383,7 @@ class _DotWindowState extends State<DotWindow> with WindowListener {
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
-                      if (_showWindowContent) ...[
-                        _buildDragHandle(),
-                        const SizedBox(width: 16),
-                      ],
+                      _buildDragHandle(),
                       DotIndicator(
                         state: _indicatorState,
                         onTap: onIndicatorTap,

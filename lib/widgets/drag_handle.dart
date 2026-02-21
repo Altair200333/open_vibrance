@@ -23,17 +23,29 @@ class DragHandle extends StatefulWidget {
   State<DragHandle> createState() => _DragHandleState();
 }
 
-class _DragHandleState extends State<DragHandle> {
+class _DragHandleState extends State<DragHandle>
+    with SingleTickerProviderStateMixin {
   bool _hovering = false;
-  bool _shown = false;
   Timer? _hideTimer;
+  late final AnimationController _showController;
+  late final Animation<double> _curved;
 
   bool get _shouldBeVisible => widget.dragging || widget.showWindowContent;
 
   @override
   void initState() {
     super.initState();
-    _shown = _shouldBeVisible;
+    _showController = AnimationController(
+      vsync: this,
+      duration: kHoverDuration,
+      reverseDuration: _hideDuration,
+      value: _shouldBeVisible ? 1.0 : 0.0,
+    );
+    _curved = CurvedAnimation(
+      parent: _showController,
+      curve: Curves.easeOut,
+      reverseCurve: Curves.easeIn,
+    );
   }
 
   @override
@@ -42,10 +54,10 @@ class _DragHandleState extends State<DragHandle> {
     if (_shouldBeVisible) {
       _hideTimer?.cancel();
       _hideTimer = null;
-      if (!_shown) setState(() => _shown = true);
-    } else if (_shown && _hideTimer == null) {
+      _showController.forward();
+    } else if (_hideTimer == null && _showController.value > 0) {
       _hideTimer = Timer(_hideDelay, () {
-        if (mounted) setState(() => _shown = false);
+        _showController.reverse();
         _hideTimer = null;
       });
     }
@@ -54,6 +66,7 @@ class _DragHandleState extends State<DragHandle> {
   @override
   void dispose() {
     _hideTimer?.cancel();
+    _showController.dispose();
     super.dispose();
   }
 
@@ -62,47 +75,50 @@ class _DragHandleState extends State<DragHandle> {
     final colors = context.colors;
     final isHandleActive = _hovering || widget.dragging;
 
-    return AnimatedScale(
-      scale: _shown ? 1.0 : 0.0,
-      duration: _shown ? kHoverDuration : _hideDuration,
-      curve: _shown ? Curves.easeOut : Curves.easeIn,
-      child: GestureDetector(
-        onPanStart: (details) => windowManager.startDragging(),
-        child: MouseRegion(
-          cursor: SystemMouseCursors.click,
-          onEnter: (_) => setState(() => _hovering = true),
-          onExit: (_) => setState(() => _hovering = false),
-          child: AnimatedScale(
-            scale: isHandleActive ? 1.1 : 1.0,
-            duration: kHoverDuration,
-            curve: kHoverCurve,
-            child: AnimatedContainer(
+    return Padding(
+      padding: const EdgeInsets.only(right: 16),
+      child: ScaleTransition(
+        scale: _curved,
+        child: GestureDetector(
+          onPanStart: (details) => windowManager.startDragging(),
+          child: MouseRegion(
+            cursor: SystemMouseCursors.click,
+            onEnter: (_) => setState(() => _hovering = true),
+            onExit: (_) => setState(() => _hovering = false),
+            child: AnimatedScale(
+              scale: isHandleActive ? 1.1 : 1.0,
               duration: kHoverDuration,
               curve: kHoverCurve,
-              width: _handleSize,
-              height: _handleSize,
-              decoration: BoxDecoration(
-                color: isHandleActive ? colors.border : colors.surfaceElevated,
-                borderRadius: BorderRadius.circular(kRadiusMd),
-                border: Border.all(
-                  color: colors.borderHover,
-                  width: 2,
+              child: AnimatedContainer(
+                duration: kHoverDuration,
+                curve: kHoverCurve,
+                width: _handleSize,
+                height: _handleSize,
+                decoration: BoxDecoration(
+                  color: isHandleActive
+                      ? colors.border
+                      : colors.surfaceElevated,
+                  borderRadius: BorderRadius.circular(kRadiusMd),
+                  border: Border.all(
+                    color: colors.borderHover,
+                    width: 2,
+                  ),
                 ),
-              ),
-              child: Center(
-                child: AnimatedContainer(
-                  duration: kHoverDuration,
-                  curve: kHoverCurve,
-                  width: isHandleActive ? 10.0 : 5.0,
-                  height: isHandleActive ? 10.0 : 5.0,
-                  decoration: BoxDecoration(
-                    color: isHandleActive
-                        ? Colors.transparent
-                        : colors.textOnPrimary,
-                    shape: BoxShape.circle,
-                    border: Border.all(
-                      color: colors.textOnPrimary,
-                      width: 1.5,
+                child: Center(
+                  child: AnimatedContainer(
+                    duration: kHoverDuration,
+                    curve: kHoverCurve,
+                    width: isHandleActive ? 10.0 : 5.0,
+                    height: isHandleActive ? 10.0 : 5.0,
+                    decoration: BoxDecoration(
+                      color: isHandleActive
+                          ? Colors.transparent
+                          : colors.textOnPrimary,
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: colors.textOnPrimary,
+                        width: 1.5,
+                      ),
                     ),
                   ),
                 ),
