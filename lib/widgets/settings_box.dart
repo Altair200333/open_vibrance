@@ -14,13 +14,15 @@ class SettingsItem {
 }
 
 class SettingsBox extends StatefulWidget {
-  final void Function(HotKeyModifier modifier, List<PhysicalKeyboardKey> keys)
-  onHotkeyChanged;
+  final void Function(List<HotKeyModifier> modifiers, List<PhysicalKeyboardKey> keys)
+      onHotkeyChanged;
+  final VoidCallback onRecordingStarted;
 
   const SettingsBox({
     super.key,
     required this.expandedWindowSize,
     required this.onHotkeyChanged,
+    required this.onRecordingStarted,
   });
 
   final Size expandedWindowSize;
@@ -46,8 +48,10 @@ class _SettingsBoxState extends State<SettingsBox> {
       SettingsItem(
         title: 'Hotkeys',
         viewBuilder:
-            (context) =>
-                HotkeysSettingsView(onHotkeyChanged: widget.onHotkeyChanged),
+            (context) => HotkeysSettingsView(
+              onHotkeyChanged: widget.onHotkeyChanged,
+              onRecordingStarted: widget.onRecordingStarted,
+            ),
       ),
     ];
   }

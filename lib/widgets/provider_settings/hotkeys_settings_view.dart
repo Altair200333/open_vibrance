@@ -1,24 +1,34 @@
 import 'package:flutter/material.dart';
-import 'package:dropdown_button2/dropdown_button2.dart';
-import 'package:open_vibrance/theme/app_colors.dart';
 import 'package:flutter/services.dart';
 import 'package:hotkey_manager/hotkey_manager.dart';
 import 'package:open_vibrance/services/hotkey_repository.dart';
+import 'package:open_vibrance/theme/app_colors.dart';
 import 'package:open_vibrance/widgets/provider_settings/hotkey_constants.dart';
 
 class HotkeysSettingsView extends StatefulWidget {
-  final void Function(HotKeyModifier modifier, List<PhysicalKeyboardKey> keys)
-  onHotkeyChanged;
+  final void Function(List<HotKeyModifier> modifiers, List<PhysicalKeyboardKey> keys)
+      onHotkeyChanged;
+  final VoidCallback onRecordingStarted;
 
-  const HotkeysSettingsView({super.key, required this.onHotkeyChanged});
+  const HotkeysSettingsView({
+    super.key,
+    required this.onHotkeyChanged,
+    required this.onRecordingStarted,
+  });
 
   @override
   State<HotkeysSettingsView> createState() => _HotkeysSettingsViewState();
 }
 
 class _HotkeysSettingsViewState extends State<HotkeysSettingsView> {
-  HotKeyModifier selectedModifier = HotKeyModifier.alt;
-  PhysicalKeyboardKey selectedKey = PhysicalKeyboardKey.keyQ;
+  HotkeyCombo? _currentCombo;
+  bool _isRecording = false;
+  String? _liveError;
+  bool _isHoveringField = false;
+  bool _isHoveringClose = false;
+
+  final Set<PhysicalKeyboardKey> _pressedKeys = {};
+  final FocusNode _focusNode = FocusNode();
 
   @override
   void initState() {
@@ -26,21 +36,138 @@ class _HotkeysSettingsViewState extends State<HotkeysSettingsView> {
     _loadHotkeySettings();
   }
 
-  Future<void> _loadHotkeySettings() async {
-    final combo = await HotkeyRepository().readHotkey();
-    if (mounted && combo != null) {
-      setState(() {
-        selectedModifier = combo.modifier;
-        if (combo.keys.isNotEmpty) selectedKey = combo.keys.first;
-      });
-    }
-    widget.onHotkeyChanged(selectedModifier, [selectedKey]);
+  @override
+  void dispose() {
+    _focusNode.dispose();
+    super.dispose();
   }
 
-  void _saveAndNotify() {
-    final combo = HotkeyCombo(modifier: selectedModifier, keys: [selectedKey]);
+  Future<void> _loadHotkeySettings() async {
+    final combo = await HotkeyRepository().readHotkey();
+    if (mounted) {
+      setState(() => _currentCombo = combo);
+      if (combo != null) {
+        widget.onHotkeyChanged(combo.modifiers, combo.keys);
+      }
+    }
+  }
+
+  void _startRecording() {
+    widget.onRecordingStarted();
+    setState(() {
+      _isRecording = true;
+      _liveError = null;
+      _pressedKeys.clear();
+    });
+    _focusNode.requestFocus();
+  }
+
+  void _cancelRecording() {
+    setState(() {
+      _isRecording = false;
+      _liveError = null;
+    });
+    if (_currentCombo != null) {
+      widget.onHotkeyChanged(_currentCombo!.modifiers, _currentCombo!.keys);
+    }
+  }
+
+  void _saveCombo(List<HotKeyModifier> modifiers, PhysicalKeyboardKey key) {
+    final combo = HotkeyCombo(modifiers: modifiers, keys: [key]);
     HotkeyRepository().saveHotkey(combo);
-    widget.onHotkeyChanged(selectedModifier, [selectedKey]);
+    setState(() {
+      _currentCombo = combo;
+      _isRecording = false;
+      _liveError = null;
+    });
+    widget.onHotkeyChanged(combo.modifiers, combo.keys);
+  }
+
+  ({Set<HotKeyModifier> mods, List<PhysicalKeyboardKey> keys}) _splitPressed() {
+    final mods = <HotKeyModifier>{};
+    final keys = <PhysicalKeyboardKey>[];
+    for (final key in _pressedKeys) {
+      final mod = physicalKeyToModifier[key];
+      if (mod != null) {
+        mods.add(mod);
+      } else {
+        keys.add(key);
+      }
+    }
+    return (mods: mods, keys: keys);
+  }
+
+  KeyEventResult _onKeyEvent(FocusNode node, KeyEvent event) {
+    if (!_isRecording) return KeyEventResult.ignored;
+
+    if (event is KeyDownEvent) {
+      if (event.physicalKey == PhysicalKeyboardKey.escape) {
+        _cancelRecording();
+        return KeyEventResult.handled;
+      }
+      _pressedKeys.add(event.physicalKey);
+    } else if (event is KeyUpEvent) {
+      _pressedKeys.remove(event.physicalKey);
+    }
+
+    final (:mods, :keys) = _splitPressed();
+
+    // Real-time validation
+    String? error;
+    if (keys.isNotEmpty && mods.isEmpty) {
+      error = 'Hold a modifier (Alt, Ctrl, Shift, Win)';
+    } else if (keys.length > 1) {
+      error = 'Too many keys — press only one key with modifier(s)';
+    }
+
+    // Valid combo: modifier(s) + exactly 1 key → save immediately
+    if (mods.isNotEmpty && keys.length == 1 && error == null) {
+      _saveCombo(mods.toList(), keys.first);
+      return KeyEventResult.handled;
+    }
+
+    // Clear error when all keys released
+    if (_pressedKeys.isEmpty) {
+      error = null;
+    }
+
+    setState(() => _liveError = error);
+    return KeyEventResult.handled;
+  }
+
+  String _getDisplayText() {
+    if (!_isRecording) {
+      return _currentCombo?.toString() ?? 'Alt + Q';
+    }
+    final (:mods, :keys) = _splitPressed();
+    if (mods.isEmpty && keys.isEmpty) {
+      return 'Press a key combination...';
+    }
+    final parts = <String>[
+      ...mods.map((m) => modifierLabels[m] ?? ''),
+      ...keys.map((k) => k.keyLabel),
+    ];
+    if (mods.isNotEmpty && keys.isEmpty) {
+      parts.add('...');
+    }
+    return parts.join(' + ');
+  }
+
+  bool get _hasError => _isRecording && _liveError != null;
+
+  Color _getBorderColor() {
+    if (_hasError) return AppColors.red400;
+    if (_isRecording) return AppColors.zinc400;
+    if (_isHoveringField) return AppColors.zinc500;
+    return AppColors.zinc700;
+  }
+
+  Color _getTextColor() {
+    if (_hasError) return AppColors.red400;
+    if (_isRecording) {
+      return _pressedKeys.isEmpty ? AppColors.zinc500 : AppColors.zinc300;
+    }
+    return AppColors.zinc300;
   }
 
   @override
@@ -51,151 +178,95 @@ class _HotkeysSettingsViewState extends State<HotkeysSettingsView> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Record hotkey:',
+            'Record hotkey',
             style: TextStyle(
               color: AppColors.zinc400,
               fontSize: 13,
               fontWeight: FontWeight.w500,
             ),
           ),
-          SizedBox(height: 16),
-          Row(
-            children: [
-              DropdownButtonHideUnderline(
-                child: DropdownButton2<HotKeyModifier>(
-                  value: selectedModifier,
-                  onChanged: (modifier) {
-                    if (modifier != null) {
-                      setState(() => selectedModifier = modifier);
-                      _saveAndNotify();
-                    }
-                  },
-                  items: modifierLabels.entries.map(
-                    (entry) => DropdownMenuItem<HotKeyModifier>(
-                      value: entry.key,
-                      child: Text(
-                        entry.value,
-                        style: TextStyle(color: AppColors.zinc300, fontSize: 14),
-                      ),
-                    ),
-                  ).toList(),
-                  buttonStyleData: ButtonStyleData(
-                    height: 40,
-                    padding: EdgeInsets.symmetric(horizontal: 12),
-                    decoration: BoxDecoration(
-                      color: AppColors.zinc800,
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: AppColors.zinc700),
-                    ),
-                  ),
-                  dropdownStyleData: DropdownStyleData(
-                    decoration: BoxDecoration(
-                      color: AppColors.zinc800,
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: AppColors.zinc700),
-                    ),
-                    elevation: 0,
-                  ),
-                  iconStyleData: IconStyleData(
-                    icon: Icon(Icons.keyboard_arrow_down_rounded),
-                    iconSize: 20,
-                    iconEnabledColor: AppColors.zinc400,
-                  ),
-                  menuItemStyleData: MenuItemStyleData(
-                    height: 40,
-                    padding: EdgeInsets.symmetric(horizontal: 12),
-                    overlayColor: WidgetStatePropertyAll(AppColors.zinc700),
-                  ),
-                ),
-              ),
-              SizedBox(width: 12),
-              Icon(Icons.add, color: AppColors.zinc500, size: 14),
-              SizedBox(width: 12),
-              DropdownButtonHideUnderline(
-                child: DropdownButton2<PhysicalKeyboardKey>(
-                  value: selectedKey,
-                  onChanged: (key) {
-                    if (key != null) {
-                      setState(() => selectedKey = key);
-                      _saveAndNotify();
-                    }
-                  },
-                  items: basicKeyOptions.map(
-                    (key) => DropdownMenuItem<PhysicalKeyboardKey>(
-                      value: key,
-                      child: Text(
-                        key.keyLabel,
-                        style: TextStyle(color: AppColors.zinc300, fontSize: 14),
-                      ),
-                    ),
-                  ).toList(),
-                  buttonStyleData: ButtonStyleData(
-                    height: 40,
-                    padding: EdgeInsets.symmetric(horizontal: 12),
-                    decoration: BoxDecoration(
-                      color: AppColors.zinc800,
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: AppColors.zinc700),
-                    ),
-                  ),
-                  dropdownStyleData: DropdownStyleData(
-                    maxHeight: 300,
-                    decoration: BoxDecoration(
-                      color: AppColors.zinc800,
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: AppColors.zinc700),
-                    ),
-                    elevation: 0,
-                  ),
-                  iconStyleData: IconStyleData(
-                    icon: Icon(Icons.keyboard_arrow_down_rounded),
-                    iconSize: 20,
-                    iconEnabledColor: AppColors.zinc400,
-                  ),
-                  menuItemStyleData: MenuItemStyleData(
-                    height: 40,
-                    padding: EdgeInsets.symmetric(horizontal: 12),
-                    overlayColor: WidgetStatePropertyAll(AppColors.zinc700),
-                  ),
-                ),
-              ),
-            ],
+          SizedBox(height: 8),
+          Text(
+            'Click the field below and press modifier + key',
+            style: TextStyle(color: AppColors.zinc500, fontSize: 12),
           ),
-          SizedBox(height: 24),
-          Row(
-            children: [
-              Text(
-                'Selected hotkey:',
-                style: TextStyle(
-                  color: AppColors.zinc400,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w500,
+          SizedBox(height: 12),
+          Focus(
+            focusNode: _focusNode,
+            onKeyEvent: _onKeyEvent,
+            onFocusChange: (hasFocus) {
+              if (!hasFocus && _isRecording) _cancelRecording();
+            },
+            child: GestureDetector(
+              onTap: !_isRecording ? _startRecording : null,
+              child: MouseRegion(
+                cursor: !_isRecording
+                    ? SystemMouseCursors.click
+                    : SystemMouseCursors.basic,
+                onEnter: (_) => setState(() => _isHoveringField = true),
+                onExit: (_) => setState(() => _isHoveringField = false),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  curve: Curves.easeOut,
+                  padding: EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: AppColors.zinc800,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: _getBorderColor(), width: 1),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        _isRecording
+                            ? Icons.fiber_manual_record
+                            : Icons.keyboard_outlined,
+                        color: _isRecording ? AppColors.red400 : AppColors.zinc500,
+                        size: 16,
+                      ),
+                      SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          _getDisplayText(),
+                          style: TextStyle(
+                            color: _getTextColor(),
+                            fontSize: 14,
+                          ),
+                        ),
+                      ),
+                      if (_isRecording)
+                        MouseRegion(
+                          cursor: SystemMouseCursors.click,
+                          onEnter: (_) => setState(() => _isHoveringClose = true),
+                          onExit: (_) => setState(() => _isHoveringClose = false),
+                          child: GestureDetector(
+                            onTap: _cancelRecording,
+                            child: Icon(
+                              Icons.close,
+                              color: _isHoveringClose
+                                  ? AppColors.zinc300
+                                  : AppColors.zinc500,
+                              size: 16,
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
                 ),
               ),
-              SizedBox(width: 8),
-              Container(
-                padding: EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(
-                  color: AppColors.zinc800,
-                  borderRadius: BorderRadius.circular(6),
-                  border: Border.all(color: AppColors.zinc700),
-                ),
-                child: Text(
-                  _getHotkeyCombination(),
-                  style: TextStyle(color: AppColors.zinc300, fontSize: 13),
-                ),
-              ),
-            ],
+            ),
           ),
+          if (_isRecording) ...[
+            SizedBox(height: 8),
+            Text(
+              _liveError ?? 'Press Esc to cancel',
+              style: TextStyle(
+                color: _liveError != null ? AppColors.red400 : AppColors.zinc500,
+                fontSize: 11,
+              ),
+            ),
+          ],
         ],
       ),
     );
-  }
-
-  String _getHotkeyCombination() {
-    return HotkeyCombo(
-      modifier: selectedModifier,
-      keys: [selectedKey],
-    ).toString();
   }
 }

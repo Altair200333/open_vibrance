@@ -58,10 +58,10 @@ class _DotWindowState extends State<DotWindow> with WindowListener {
     dprint('Registering hotkeys for $defaultTargetPlatform');
 
     final combo = await HotkeyRepository().readHotkey();
-    final modifier = combo?.modifier ?? HotKeyModifier.alt;
+    final modifiers = combo?.modifiers ?? [HotKeyModifier.alt];
     final keys = combo?.keys ?? [PhysicalKeyboardKey.keyQ];
 
-    await _applyHotkeyChanges(modifier, keys);
+    await _applyHotkeyChanges(modifiers, keys);
   }
 
   Future<void> _startRecording() async {
@@ -296,15 +296,19 @@ class _DotWindowState extends State<DotWindow> with WindowListener {
     _handleToggleSettingsBox();
   }
 
+  void _onRecordingStarted() {
+    _shortcutHelper.init();
+  }
+
   void _onHotkeyChanged(
-    HotKeyModifier modifier,
+    List<HotKeyModifier> modifiers,
     List<PhysicalKeyboardKey> keys,
   ) {
-    _applyHotkeyChanges(modifier, keys);
+    _applyHotkeyChanges(modifiers, keys);
   }
 
   Future<void> _applyHotkeyChanges(
-    HotKeyModifier modifier,
+    List<HotKeyModifier> modifiers,
     List<PhysicalKeyboardKey> keys,
   ) async {
     await _shortcutHelper.init();
@@ -312,7 +316,7 @@ class _DotWindowState extends State<DotWindow> with WindowListener {
     for (var key in keys) {
       final hotKey = HotKey(
         key: key,
-        modifiers: [modifier],
+        modifiers: modifiers,
         scope: HotKeyScope.system,
       );
       await _shortcutHelper.registerHotkey((
@@ -338,6 +342,7 @@ class _DotWindowState extends State<DotWindow> with WindowListener {
               SettingsBox(
                 expandedWindowSize: expandedWindowSize,
                 onHotkeyChanged: _onHotkeyChanged,
+                onRecordingStarted: _onRecordingStarted,
               ),
             Positioned(
               left: 0,
