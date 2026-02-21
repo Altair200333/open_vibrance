@@ -222,15 +222,17 @@ class _DotWindowState extends State<DotWindow> with WindowListener {
   }
 
   void onMouseExitWindow(PointerExitEvent event) {
-    setState(() {
-      _hoveringWindow = false;
-      _hoveringIndicator = false;
-      _showWindowContent = false;
-    });
+    setState(() => _hoveringWindow = false);
     if (_indicatorState != IndicatorState.expanded && !_dragging) {
       _exitDebounce?.cancel();
       _exitDebounce = Timer(const Duration(milliseconds: 150), () {
-        _deactivateWindow();
+        if (!_dragging) {
+          setState(() {
+            _hoveringIndicator = false;
+            _showWindowContent = false;
+          });
+          _deactivateWindow();
+        }
       });
     }
   }
