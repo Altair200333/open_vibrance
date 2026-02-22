@@ -5,17 +5,17 @@ import 'package:open_vibrance/transcription/types.dart';
 import 'package:open_vibrance/widgets/provider_settings/hotkey_constants.dart';
 
 class HotkeyCombo {
-  final HotKeyModifier modifier;
+  final List<HotKeyModifier> modifiers;
   final List<PhysicalKeyboardKey> keys;
 
-  HotkeyCombo({required this.modifier, required this.keys});
+  HotkeyCombo({required this.modifiers, required this.keys});
 
   static const String _separator = ' + ';
 
   String serialize() {
-    final modLabel = modifierLabels[modifier] ?? '';
-    final keyLabels = keys.map((k) => k.keyLabel).join(_separator);
-    return '$modLabel$_separator$keyLabels';
+    final modLabels = modifiers.map((m) => modifierLabels[m] ?? '');
+    final keyLabels = keys.map((k) => k.keyLabel);
+    return [...modLabels, ...keyLabels].join(_separator);
   }
 
   @override
@@ -23,30 +23,40 @@ class HotkeyCombo {
 
   static HotkeyCombo deserialize(String serialized) {
     final parts = serialized.split(_separator);
-    final modifier = _parseModifier(parts.first);
-    final keys = _parseKeys(parts.skip(1));
-    return HotkeyCombo(modifier: modifier, keys: keys);
+    final modifiers = <HotKeyModifier>[];
+    final keyParts = <String>[];
+
+    // Greedily match modifier labels first, rest are key labels
+    for (final part in parts) {
+      final mod = _tryParseModifier(part);
+      if (mod != null && keyParts.isEmpty) {
+        modifiers.add(mod);
+      } else {
+        keyParts.add(part);
+      }
+    }
+
+    // Fallback: if no modifiers found, default to Alt
+    if (modifiers.isEmpty) {
+      modifiers.add(HotKeyModifier.alt);
+    }
+
+    final keys = _parseKeys(keyParts);
+    return HotkeyCombo(modifiers: modifiers, keys: keys);
   }
 
-  static HotKeyModifier _parseModifier(String modLabel) {
-    return modifierLabels.entries
-        .firstWhere(
-          (e) => e.value.toLowerCase() == modLabel.toLowerCase(),
-          orElse:
-              () => MapEntry(
-                HotKeyModifier.alt,
-                modifierLabels[HotKeyModifier.alt]!,
-              ),
-        )
-        .key;
+  static HotKeyModifier? _tryParseModifier(String label) {
+    for (final entry in modifierLabels.entries) {
+      if (entry.value.toLowerCase() == label.toLowerCase()) {
+        return entry.key;
+      }
+    }
+    return null;
   }
 
   static List<PhysicalKeyboardKey> _parseKeys(Iterable<String> keyLabels) {
     return keyLabels.map((label) {
-      return basicKeyOptions.firstWhere(
-        (k) => (k.keyLabel ?? '').toLowerCase() == label.toLowerCase(),
-        orElse: () => basicKeyOptions.first,
-      );
+      return keyLabelToPhysicalKey(label) ?? basicKeyOptions.first;
     }).toList();
   }
 }

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:open_vibrance/theme/app_color_theme.dart';
 import 'package:open_vibrance/widgets/constants.dart';
 
 /// A row of small fading circles used for the "idle" indicator when hovered.
@@ -10,6 +11,8 @@ class IdleDots extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = context.colors;
+
     return AnimatedOpacity(
       opacity: isHovered ? 1.0 : 0.0,
       duration: const Duration(milliseconds: 300),
@@ -26,8 +29,8 @@ class IdleDots extends StatelessWidget {
                 duration: const Duration(milliseconds: 200),
                 width: size,
                 height: size,
-                decoration: const BoxDecoration(
-                  color: Colors.white,
+                decoration: BoxDecoration(
+                  color: colors.textOnPrimary,
                   shape: BoxShape.circle,
                 ),
               );

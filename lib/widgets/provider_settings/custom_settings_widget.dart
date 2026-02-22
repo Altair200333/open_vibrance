@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:open_vibrance/services/storage_service.dart';
-import 'package:open_vibrance/theme/app_colors.dart';
+import 'package:open_vibrance/theme/app_color_theme.dart';
+import 'package:open_vibrance/widgets/constants.dart';
 import 'package:open_vibrance/transcription/types.dart';
 
 class CustomSettingsWidget extends StatefulWidget {
@@ -42,14 +43,19 @@ class _CustomSettingsWidgetState extends State<CustomSettingsWidget> {
 
   @override
   Widget build(BuildContext context) {
+    final colors = context.colors;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Custom Python code', style: TextStyle(color: Colors.white)),
+        Text(
+          'Custom Python code',
+          style: TextStyle(color: colors.textSecondary, fontSize: kFontSizeMd, fontWeight: FontWeight.w500),
+        ),
         SizedBox(height: 8),
         Text.rich(
           TextSpan(
-            style: TextStyle(color: Colors.white54, fontSize: 12),
+            style: TextStyle(color: colors.textHint, fontSize: kFontSizeSm),
             children: [
               TextSpan(
                 text:
@@ -64,7 +70,7 @@ class _CustomSettingsWidgetState extends State<CustomSettingsWidget> {
               TextSpan(
                 text: 'base64_audio',
                 style: TextStyle(
-                  color: AppColors.blue300,
+                  color: colors.textPrimary,
                   fontWeight: FontWeight.bold,
                 ),
               ),
@@ -73,7 +79,7 @@ class _CustomSettingsWidgetState extends State<CustomSettingsWidget> {
               TextSpan(
                 text: 'print',
                 style: TextStyle(
-                  color: AppColors.blue300,
+                  color: colors.textPrimary,
                   fontWeight: FontWeight.bold,
                 ),
               ),
@@ -86,32 +92,13 @@ class _CustomSettingsWidgetState extends State<CustomSettingsWidget> {
         SizedBox(height: 8),
         Text(
           'If unsure what this means, just paste docs from your transcription provider into ChatGPT and ask to write Python snippet accepting base64 audio and returning a string from it',
-          style: TextStyle(color: AppColors.blue300, fontSize: 12),
+          style: TextStyle(color: colors.textSecondary, fontSize: kFontSizeSm, fontStyle: FontStyle.italic),
         ),
         SizedBox(height: 16),
         TextField(
           controller: _customJSCodeController,
-          decoration: InputDecoration(
-            hintText: 'Plain Python code',
-            hintStyle: TextStyle(color: Colors.white54),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8.0),
-              borderSide: BorderSide(color: Colors.white70),
-            ),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8.0),
-              borderSide: BorderSide(color: Colors.white70),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8.0),
-              borderSide: BorderSide(color: AppColors.blue500, width: 2),
-            ),
-            contentPadding: EdgeInsets.symmetric(
-              horizontal: 12.0,
-              vertical: 8.0,
-            ),
-          ),
-          style: TextStyle(color: Colors.white),
+          decoration: InputDecoration(hintText: 'Plain Python code'),
+          style: TextStyle(color: colors.textPrimary),
           onChanged: _onCustomJSCodeChanged,
           minLines: 5,
           maxLines: 300,

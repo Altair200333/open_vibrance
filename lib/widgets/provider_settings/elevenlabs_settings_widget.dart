@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:dropdown_button2/dropdown_button2.dart';
 import 'package:open_vibrance/services/storage_service.dart';
 import 'package:open_vibrance/transcription/elevenlabs_transcription_provider.dart';
-import 'package:open_vibrance/theme/app_colors.dart';
+import 'package:open_vibrance/theme/app_color_theme.dart';
+import 'package:open_vibrance/theme/app_styles.dart';
+import 'package:open_vibrance/widgets/constants.dart';
 import 'package:open_vibrance/transcription/types.dart';
 
 class ElevenLabsSettingsWidget extends StatefulWidget {
@@ -72,60 +75,56 @@ class _ElevenLabsSettingsWidgetState extends State<ElevenLabsSettingsWidget> {
 
   @override
   Widget build(BuildContext context) {
-    var modelItems = ElevenLabsModel.values.map(
-      (model) => DropdownMenuItem(
-        value: model,
-        child: Text(model.displayName, style: TextStyle(color: Colors.white)),
-      ),
-    );
+    final colors = context.colors;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('ElevenLabs API key', style: TextStyle(color: Colors.white)),
+        Text(
+          'ElevenLabs API key',
+          style: TextStyle(color: colors.textSecondary, fontSize: kFontSizeMd, fontWeight: FontWeight.w500),
+        ),
         SizedBox(height: 8),
         Text(
           'Uses Scribe model from ElevenLabs (subscription required)',
-          style: TextStyle(color: Colors.white54, fontSize: 12),
+          style: TextStyle(color: colors.textHint, fontSize: kFontSizeSm),
         ),
         SizedBox(height: 8),
         TextField(
           controller: _apiKeyController,
-          decoration: InputDecoration(
-            hintText: 'Enter your API key',
-            hintStyle: TextStyle(color: Colors.white54),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8.0),
-              borderSide: BorderSide(color: Colors.white70),
-            ),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8.0),
-              borderSide: BorderSide(color: Colors.white70),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8.0),
-              borderSide: BorderSide(color: AppColors.blue500, width: 2),
-            ),
-            contentPadding: EdgeInsets.symmetric(
-              horizontal: 12.0,
-              vertical: 8.0,
-            ),
-          ),
-          style: TextStyle(color: Colors.white),
+          decoration: InputDecoration(hintText: 'Enter your API key'),
+          style: TextStyle(color: colors.textPrimary),
           onChanged: _onElevenLabsApiKeyChanged,
         ),
         SizedBox(height: 32),
-        Text('ElevenLabs Model', style: TextStyle(color: Colors.white)),
+        Text(
+          'ElevenLabs Model',
+          style: TextStyle(color: colors.textSecondary, fontSize: kFontSizeMd, fontWeight: FontWeight.w500),
+        ),
         SizedBox(height: 8),
         Text(
           'Select the model to use for transcription',
-          style: TextStyle(color: Colors.white54, fontSize: 12),
+          style: TextStyle(color: colors.textHint, fontSize: kFontSizeSm),
         ),
-        DropdownButton<ElevenLabsModel>(
-          value: _selectedElevenLabsModel,
-          dropdownColor: AppColors.gray700,
-          items: modelItems.toList(),
-          onChanged: _onElevenLabsModelChanged,
+        SizedBox(height: 8),
+        DropdownButtonHideUnderline(
+          child: DropdownButton2<ElevenLabsModel>(
+            value: _selectedElevenLabsModel,
+            onChanged: _onElevenLabsModelChanged,
+            items: ElevenLabsModel.values.map(
+              (model) => DropdownMenuItem<ElevenLabsModel>(
+                value: model,
+                child: Text(
+                  model.displayName,
+                  style: TextStyle(color: colors.textPrimary, fontSize: kFontSizeLg),
+                ),
+              ),
+            ).toList(),
+            buttonStyleData: AppStyles.dropdownButton(colors),
+            dropdownStyleData: AppStyles.dropdownMenu(colors),
+            iconStyleData: AppStyles.dropdownIcon(colors),
+            menuItemStyleData: AppStyles.dropdownMenuItem(colors),
+          ),
         ),
       ],
     );

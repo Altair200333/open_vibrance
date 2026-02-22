@@ -15,6 +15,8 @@ import 'package:open_vibrance/widgets/settings_box.dart' show SettingsBox;
 import 'package:open_vibrance/widgets/constants.dart';
 import 'package:flutter/foundation.dart' show defaultTargetPlatform;
 import 'package:open_vibrance/services/hotkey_repository.dart';
+import 'package:open_vibrance/services/history_repository.dart';
+import 'package:open_vibrance/models/history_entry.dart';
 
 class DotWindow extends StatefulWidget {
   const DotWindow({super.key});
@@ -35,40 +37,41 @@ class _DotWindowState extends State<DotWindow> with WindowListener {
   double _pointerY = 0;
 
   late final AudioService _audioService;
-  double _lastAmplitude = 0;
 
   final ShortcutHelper _shortcutHelper = ShortcutHelper();
   final TranscriptionService _transcriptionService = TranscriptionService();
+  final HistoryRepository _historyRepository = HistoryRepository();
+  String? _currentRecordingPath;
+  Timer? _exitDebounce;
+  Size _actualIdleSize = initialWindowSize;
 
   @override
   void initState() {
     super.initState();
-    windowManager.addListener(this);
     _initWindow();
 
     _registerHotKeys();
 
     _audioService = AudioService();
-    _audioService.addListener(() {
-      setState(() => _lastAmplitude = _audioService.amplitude);
-    });
   }
 
   Future<void> _registerHotKeys() async {
     dprint('Registering hotkeys for $defaultTargetPlatform');
 
     final combo = await HotkeyRepository().readHotkey();
-    final modifier = combo?.modifier ?? HotKeyModifier.alt;
+    final modifiers = combo?.modifiers ?? [HotKeyModifier.alt];
     final keys = combo?.keys ?? [PhysicalKeyboardKey.keyQ];
 
-    await _applyHotkeyChanges(modifier, keys);
+    await _applyHotkeyChanges(modifiers, keys);
   }
 
   Future<void> _startRecording() async {
     try {
-      await _audioService.start();
+      _currentRecordingPath = await _historyRepository.generateRecordingPath();
+      await _audioService.start(path: _currentRecordingPath!);
     } catch (e) {
       dprint('Recording failed: $e');
+      if (!mounted) return;
       setState(() => _indicatorState = IndicatorState.idle);
     }
   }
@@ -77,12 +80,37 @@ class _DotWindowState extends State<DotWindow> with WindowListener {
     try {
       setState(() => _indicatorState = IndicatorState.transcribing);
 
-      await _transcriptionService.transcribeFileAndPaste(path);
+      final transcription = await _transcriptionService.transcribeFileAndPaste(path);
+
+      await _historyRepository.addEntry(HistoryEntry(
+        id: _historyRepository.idFromPath(path),
+        audioFilePath: path,
+        transcription: transcription,
+        timestamp: DateTime.now(),
+        success: true,
+      ));
+      _historyRepository.cleanup();
     } catch (e) {
       dprint('Error transcribing file: $e');
-    } finally {
-      setState(() => _indicatorState = IndicatorState.idle);
+
+      try {
+        await _historyRepository.addEntry(HistoryEntry(
+          id: _historyRepository.idFromPath(path),
+          audioFilePath: path,
+          timestamp: DateTime.now(),
+          success: false,
+        ));
+      } catch (e) {
+        dprint('Failed to save error entry: $e');
+      }
+
+      if (!mounted) return;
+      setState(() => _indicatorState = IndicatorState.error);
+      await Future.delayed(const Duration(milliseconds: 1200));
     }
+
+    if (!mounted) return;
+    setState(() => _indicatorState = IndicatorState.idle);
   }
 
   Future<void> _stopRecording() async {
@@ -94,6 +122,7 @@ class _DotWindowState extends State<DotWindow> with WindowListener {
     if (path != null) {
       await _transcribeFile(path);
     } else {
+      if (!mounted) return;
       setState(() => _indicatorState = IndicatorState.idle);
     }
   }
@@ -123,6 +152,7 @@ class _DotWindowState extends State<DotWindow> with WindowListener {
 
   @override
   void onWindowMove() {
+    _exitDebounce?.cancel();
     if (!_dragging) {
       setState(() => _dragging = true);
     }
@@ -146,11 +176,14 @@ class _DotWindowState extends State<DotWindow> with WindowListener {
     );
 
     await windowManager.waitUntilReadyToShow(options, () async {
-      await windowManager.setHasShadow(false);
       await windowManager.setPosition(offset);
-      await windowManager.setIgnoreMouseEvents(false);
       await windowManager.setAlwaysOnTop(true);
       await windowManager.setAsFrameless();
+      await windowManager.setHasShadow(false);
+      // Re-apply size: waitUntilReadyToShow calls setSize before setMinimumSize,
+      // so Windows enforces SM_CYMINTRACK (~36px) as minimum height.
+      // Now that minimumSize is set, the correct 30px height is allowed.
+      await windowManager.setSize(initialWindowSize);
 
       windowManager.addListener(this);
 
@@ -159,11 +192,14 @@ class _DotWindowState extends State<DotWindow> with WindowListener {
         color: Colors.transparent,
       );
       await windowManager.show();
+      await windowManager.setIgnoreMouseEvents(true, forward: true);
     });
   }
 
   @override
   void dispose() {
+    _exitDebounce?.cancel();
+    _shortcutHelper.dispose();
     _audioService.dispose();
     windowManager.removeListener(this);
     super.dispose();
@@ -200,6 +236,7 @@ class _DotWindowState extends State<DotWindow> with WindowListener {
 
   void onMouseEnterIndicator(PointerEnterEvent event) {
     _updateIndicatorHoveringState();
+    _activateWindow();
   }
 
   void onMouseExitIndicator(PointerExitEvent event) {
@@ -207,78 +244,75 @@ class _DotWindowState extends State<DotWindow> with WindowListener {
   }
 
   void onMouseEnterWindow(PointerEnterEvent event) {
+    _exitDebounce?.cancel();
     setState(() => _hoveringWindow = true);
   }
 
-  void onMouseExitWindow(PointerExitEvent event) {
-    setState(() {
-      _hoveringWindow = false;
-      _hoveringIndicator = false;
-      _showWindowContent = false;
-    });
+  Future<void> _activateWindow() async {
+    await windowManager.setIgnoreMouseEvents(false);
   }
 
-  Rect _getWindowBounds(Offset currentPosition, bool isExpanded) {
-    // pretty hacky way, but it got it working
-    // idea is to keep the main indicator in the same spot on the screen while chaning size and position of the window itself
-    // it has to account for borders, alignment, dot size and arbitrary constant offset
-
-    Size newSize;
-    Offset newPosition;
-    if (isExpanded) {
-      newPosition = Offset(
-        currentPosition.dx,
-        currentPosition.dy +
-            expandedWindowSize.height -
-            initialWindowSize.height * 0.5 -
-            kDotSize +
-            4,
-      );
-      newSize = initialWindowSize;
-    } else {
-      newPosition = Offset(
-        currentPosition.dx,
-        currentPosition.dy +
-            initialWindowSize.height * 0.5 -
-            expandedWindowSize.height +
-            kDotSize -
-            3.5,
-      );
-      newSize = expandedWindowSize;
+  void onMouseExitWindow(PointerExitEvent event) {
+    setState(() => _hoveringWindow = false);
+    if (_indicatorState != IndicatorState.expanded && !_dragging) {
+      _exitDebounce?.cancel();
+      _exitDebounce = Timer(const Duration(milliseconds: 150), () {
+        if (!_dragging && mounted) {
+          setState(() {
+            _hoveringIndicator = false;
+            _showWindowContent = false;
+          });
+          _deactivateWindow();
+        }
+      });
     }
-    return Rect.fromLTWH(
-      newPosition.dx,
-      newPosition.dy,
-      newSize.width,
-      newSize.height,
-    );
+  }
+
+  Future<void> _deactivateWindow() async {
+    await windowManager.setIgnoreMouseEvents(true, forward: true);
   }
 
   Future<void> _handleToggleSettingsBox() async {
-    var currentPosition = await windowManager.getPosition();
+    final isExpanded = _indicatorState == IndicatorState.expanded;
 
-    var isExpanded = _indicatorState == IndicatorState.expanded;
-    var bounds = _getWindowBounds(currentPosition, isExpanded);
+    // Use actual window bounds to avoid DPI/OS rounding discrepancies
+    final currentPos = await windowManager.getPosition();
+    final currentSize = await windowManager.getSize();
+    final Size targetSize;
+    if (isExpanded) {
+      // Collapsing: use the actual idle size (may differ from nominal due to OS constraints)
+      targetSize = _actualIdleSize;
+    } else {
+      // Expanding: save actual idle size before growing
+      _actualIdleSize = currentSize;
+      targetSize = expandedWindowSize;
+    }
 
-    setState(() => _settingsBoxVisible = !isExpanded);
+    // Keep the bottom edge pinned at the same screen position
+    final newTop = currentPos.dy + currentSize.height - targetSize.height;
+    final bounds = Rect.fromLTWH(
+      currentPos.dx,
+      newTop,
+      targetSize.width,
+      targetSize.height,
+    );
 
-    // add small delay between showing settings box and resizing window
-    // to prevent settings box from flickering
-    await Future.delayed(const Duration(milliseconds: 50));
+    if (!mounted) return;
+    setState(() {
+      _settingsBoxVisible = !isExpanded;
+      _indicatorState = isExpanded ? IndicatorState.idle : IndicatorState.expanded;
+    });
 
-    // also ideally there should be delay + subtle animation to hide "jumping" of the indicator dot itself
-    windowManager.setMinimumSize(bounds.size);
-    windowManager.setMaximumSize(bounds.size);
-    windowManager.setBounds(bounds);
+    // Relax constraints to allow target size, then set bounds atomically.
+    // Locking min=max after setBounds can trigger Windows to re-adjust position.
+    await windowManager.setMinimumSize(initialWindowSize);
+    await windowManager.setMaximumSize(expandedWindowSize);
+    await windowManager.setBounds(bounds);
 
-    _toggleIndicatorExpandedState();
-  }
-
-  void _toggleIndicatorExpandedState() {
-    var isExpanded = _indicatorState == IndicatorState.expanded;
-    var newState = isExpanded ? IndicatorState.idle : IndicatorState.expanded;
-
-    setState(() => _indicatorState = newState);
+    // Restore click-through after collapsing back to idle
+    if (isExpanded) {
+      await windowManager.setIgnoreMouseEvents(true, forward: true);
+    }
   }
 
   bool _canToggleSettingsBox() {
@@ -293,15 +327,19 @@ class _DotWindowState extends State<DotWindow> with WindowListener {
     _handleToggleSettingsBox();
   }
 
+  void _onRecordingStarted() {
+    _shortcutHelper.init();
+  }
+
   void _onHotkeyChanged(
-    HotKeyModifier modifier,
+    List<HotKeyModifier> modifiers,
     List<PhysicalKeyboardKey> keys,
   ) {
-    _applyHotkeyChanges(modifier, keys);
+    _applyHotkeyChanges(modifiers, keys);
   }
 
   Future<void> _applyHotkeyChanges(
-    HotKeyModifier modifier,
+    List<HotKeyModifier> modifiers,
     List<PhysicalKeyboardKey> keys,
   ) async {
     await _shortcutHelper.init();
@@ -309,7 +347,7 @@ class _DotWindowState extends State<DotWindow> with WindowListener {
     for (var key in keys) {
       final hotKey = HotKey(
         key: key,
-        modifiers: [modifier],
+        modifiers: modifiers,
         scope: HotKeyScope.system,
       );
       await _shortcutHelper.registerHotkey((
@@ -318,12 +356,6 @@ class _DotWindowState extends State<DotWindow> with WindowListener {
         onKeyUp: _onStopRecording,
       ));
     }
-  }
-
-  AlignmentGeometry get _indicatorAlignment {
-    return _indicatorState == IndicatorState.expanded
-        ? Alignment.bottomCenter
-        : Alignment.center;
   }
 
   @override
@@ -336,31 +368,45 @@ class _DotWindowState extends State<DotWindow> with WindowListener {
         child: Stack(
           clipBehavior: Clip.none,
           children: [
-            Container(
-              alignment: _indicatorAlignment,
-              decoration: getWindowBoxDecoration(),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  _buildDragHandle(),
-                  const SizedBox(width: 16),
-                  DotIndicator(
-                    state: _indicatorState,
-                    onTap: onIndicatorTap,
-                    onEnter: onMouseEnterIndicator,
-                    onExit: onMouseExitIndicator,
-                    onHover: onHoverIndicator,
-                    volume: _lastAmplitude,
-                    isHovered: _hoveringIndicator,
-                  ),
-                ],
-              ),
-            ),
+            Container(decoration: getWindowBoxDecoration()),
             if (_settingsBoxVisible)
               SettingsBox(
                 expandedWindowSize: expandedWindowSize,
                 onHotkeyChanged: _onHotkeyChanged,
+                onRecordingStarted: _onRecordingStarted,
+                historyRepository: _historyRepository,
+                transcriptionService: _transcriptionService,
               ),
+            Positioned(
+              left: 0,
+              bottom: 0,
+              child: SizedBox(
+                width: initialWindowSize.width,
+                height: initialWindowSize.height,
+                child: Container(
+                  alignment: Alignment.centerRight,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      _buildDragHandle(),
+                      ListenableBuilder(
+                        listenable: _audioService,
+                        builder: (context, _) => DotIndicator(
+                          state: _indicatorState,
+                          onTap: onIndicatorTap,
+                          onEnter: onMouseEnterIndicator,
+                          onExit: onMouseExitIndicator,
+                          onHover: onHoverIndicator,
+                          volume: _audioService.amplitude,
+                          isHovered: _hoveringIndicator,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
           ],
         ),
       ),

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:window_manager/window_manager.dart';
 import 'package:flutter_acrylic/flutter_acrylic.dart' as acrylic;
+import 'package:open_vibrance/theme/app_themes.dart';
 import 'package:open_vibrance/widgets/dot_window.dart';
 
 void main() async {
@@ -10,7 +12,12 @@ void main() async {
   await acrylic.Window.initialize();
   await windowManager.ensureInitialized();
 
-  runApp(const DotApp());
+  runApp(
+    ChangeNotifierProvider(
+      create: (_) => ThemeNotifier(),
+      child: const DotApp(),
+    ),
+  );
 }
 
 class DotApp extends StatelessWidget {
@@ -18,8 +25,11 @@ class DotApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const MaterialApp(
+    final themeNotifier = context.watch<ThemeNotifier>();
+
+    return MaterialApp(
       debugShowCheckedModeBanner: false,
+      theme: themeNotifier.themeData,
       home: DotWindow(),
     );
   }
