@@ -15,11 +15,18 @@ class ShortcutHelper {
   final Map<String, KeyState> _keyState = {};
   final Map<String, RegisterHotkeyParams> _hotkeyParams = {};
 
-  ShortcutHelper() {
-    init();
-  }
+  ShortcutHelper();
 
   Future<void> init() async {
+    await hotKeyManager.unregisterAll();
+  }
+
+  Future<void> dispose() async {
+    for (final state in _keyState.values) {
+      state.keyDownTimer?.cancel();
+    }
+    _keyState.clear();
+    _hotkeyParams.clear();
     await hotKeyManager.unregisterAll();
   }
 

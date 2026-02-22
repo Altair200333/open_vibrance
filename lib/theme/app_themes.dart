@@ -217,6 +217,26 @@ abstract class AppThemes {
       textTheme: TextTheme(
         bodyMedium: TextStyle(color: colors.textPrimary),
       ),
+      tooltipTheme: TooltipThemeData(
+        decoration: BoxDecoration(
+          color: colors.surfaceElevated,
+          borderRadius: BorderRadius.circular(kRadiusMd),
+          border: Border.all(color: colors.border),
+          boxShadow: [
+            BoxShadow(
+              color: colors.shadow,
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        textStyle: TextStyle(
+          color: colors.textPrimary,
+          fontSize: kFontSizeMd,
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        waitDuration: const Duration(milliseconds: 300),
+      ),
     );
   }
 }

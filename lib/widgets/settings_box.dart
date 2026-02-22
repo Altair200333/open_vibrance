@@ -113,18 +113,23 @@ class _SettingsBoxState extends State<SettingsBox> {
       left: kDotSize * 2.5,
       child: _buildSettingsContainer(
         colors: colors,
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(16.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _buildHeader(colors),
-              SizedBox(height: 16),
-              _selectedSetting != null
-                  ? _selectedSetting!.viewBuilder(context)
-                  : _buildMenu(colors),
-            ],
-          ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+              child: _buildHeader(colors),
+            ),
+            const SizedBox(height: 16),
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                child: _selectedSetting != null
+                    ? _selectedSetting!.viewBuilder(context)
+                    : _buildMenu(colors),
+              ),
+            ),
+          ],
         ),
       ),
     );

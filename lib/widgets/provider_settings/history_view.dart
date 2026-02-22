@@ -195,25 +195,32 @@ class _HistoryViewState extends State<HistoryView> {
         ),
       ),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(
-            entry.success ? Icons.check_circle_outline : Icons.error_outline,
-            color: entry.success ? colors.accent : colors.error,
-            size: 16,
+          Padding(
+            padding: const EdgeInsets.only(top: 2),
+            child: Icon(
+              entry.success ? Icons.check_circle_outline : Icons.error_outline,
+              color: entry.success ? colors.accent : colors.error,
+              size: 16,
+            ),
           ),
           const SizedBox(width: 10),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  entry.transcription ?? 'Transcription failed',
-                  style: TextStyle(
-                    color: entry.success ? colors.textPrimary : colors.errorText,
-                    fontSize: kFontSizeMd,
+                Tooltip(
+                  message: entry.transcription ?? 'Transcription failed',
+                  child: Text(
+                    entry.transcription ?? 'Transcription failed',
+                    style: TextStyle(
+                      color: entry.success ? colors.textPrimary : colors.errorText,
+                      fontSize: kFontSizeMd,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
                 ),
                 const SizedBox(height: 4),
                 Text(

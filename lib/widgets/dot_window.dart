@@ -37,7 +37,6 @@ class _DotWindowState extends State<DotWindow> with WindowListener {
   double _pointerY = 0;
 
   late final AudioService _audioService;
-  double _lastAmplitude = 0;
 
   final ShortcutHelper _shortcutHelper = ShortcutHelper();
   final TranscriptionService _transcriptionService = TranscriptionService();
@@ -54,9 +53,6 @@ class _DotWindowState extends State<DotWindow> with WindowListener {
     _registerHotKeys();
 
     _audioService = AudioService();
-    _audioService.addListener(() {
-      setState(() => _lastAmplitude = _audioService.amplitude);
-    });
   }
 
   Future<void> _registerHotKeys() async {
@@ -75,6 +71,7 @@ class _DotWindowState extends State<DotWindow> with WindowListener {
       await _audioService.start(path: _currentRecordingPath!);
     } catch (e) {
       dprint('Recording failed: $e');
+      if (!mounted) return;
       setState(() => _indicatorState = IndicatorState.idle);
     }
   }
@@ -96,18 +93,24 @@ class _DotWindowState extends State<DotWindow> with WindowListener {
     } catch (e) {
       dprint('Error transcribing file: $e');
 
-      await _historyRepository.addEntry(HistoryEntry(
-        id: _historyRepository.idFromPath(path),
-        audioFilePath: path,
-        timestamp: DateTime.now(),
-        success: false,
-      ));
+      try {
+        await _historyRepository.addEntry(HistoryEntry(
+          id: _historyRepository.idFromPath(path),
+          audioFilePath: path,
+          timestamp: DateTime.now(),
+          success: false,
+        ));
+      } catch (e) {
+        dprint('Failed to save error entry: $e');
+      }
 
+      if (!mounted) return;
       setState(() => _indicatorState = IndicatorState.error);
       await Future.delayed(const Duration(milliseconds: 1200));
-    } finally {
-      setState(() => _indicatorState = IndicatorState.idle);
     }
+
+    if (!mounted) return;
+    setState(() => _indicatorState = IndicatorState.idle);
   }
 
   Future<void> _stopRecording() async {
@@ -119,6 +122,7 @@ class _DotWindowState extends State<DotWindow> with WindowListener {
     if (path != null) {
       await _transcribeFile(path);
     } else {
+      if (!mounted) return;
       setState(() => _indicatorState = IndicatorState.idle);
     }
   }
@@ -138,7 +142,7 @@ class _DotWindowState extends State<DotWindow> with WindowListener {
   void _onStopRecording() => _stopRecording();
 
   @override
-  void onWindowMoved() async {
+  void onWindowMoved() {
     setState(() {
       _dragging = false;
       _hoveringWindow = true;
@@ -195,6 +199,7 @@ class _DotWindowState extends State<DotWindow> with WindowListener {
   @override
   void dispose() {
     _exitDebounce?.cancel();
+    _shortcutHelper.dispose();
     _audioService.dispose();
     windowManager.removeListener(this);
     super.dispose();
@@ -252,7 +257,7 @@ class _DotWindowState extends State<DotWindow> with WindowListener {
     if (_indicatorState != IndicatorState.expanded && !_dragging) {
       _exitDebounce?.cancel();
       _exitDebounce = Timer(const Duration(milliseconds: 150), () {
-        if (!_dragging) {
+        if (!_dragging && mounted) {
           setState(() {
             _hoveringIndicator = false;
             _showWindowContent = false;
@@ -292,6 +297,7 @@ class _DotWindowState extends State<DotWindow> with WindowListener {
       targetSize.height,
     );
 
+    if (!mounted) return;
     setState(() {
       _settingsBoxVisible = !isExpanded;
       _indicatorState = isExpanded ? IndicatorState.idle : IndicatorState.expanded;
@@ -384,14 +390,17 @@ class _DotWindowState extends State<DotWindow> with WindowListener {
                     crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
                       _buildDragHandle(),
-                      DotIndicator(
-                        state: _indicatorState,
-                        onTap: onIndicatorTap,
-                        onEnter: onMouseEnterIndicator,
-                        onExit: onMouseExitIndicator,
-                        onHover: onHoverIndicator,
-                        volume: _lastAmplitude,
-                        isHovered: _hoveringIndicator,
+                      ListenableBuilder(
+                        listenable: _audioService,
+                        builder: (context, _) => DotIndicator(
+                          state: _indicatorState,
+                          onTap: onIndicatorTap,
+                          onEnter: onMouseEnterIndicator,
+                          onExit: onMouseExitIndicator,
+                          onHover: onHoverIndicator,
+                          volume: _audioService.amplitude,
+                          isHovered: _hoveringIndicator,
+                        ),
                       ),
                     ],
                   ),
