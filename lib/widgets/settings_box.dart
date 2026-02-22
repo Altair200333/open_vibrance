@@ -46,6 +46,7 @@ class SettingsBox extends StatefulWidget {
 class _SettingsBoxState extends State<SettingsBox> {
   SettingsItem? _selectedSetting;
   bool _showToast = false;
+  bool _isScrolled = false;
   Timer? _toastTimer;
 
   late final List<SettingsItem> _settingsItems;
@@ -117,16 +118,52 @@ class _SettingsBoxState extends State<SettingsBox> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+              padding: const EdgeInsets.all(16),
               child: _buildHeader(colors),
             ),
-            const SizedBox(height: 16),
             Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                child: _selectedSetting != null
-                    ? _selectedSetting!.viewBuilder(context)
-                    : _buildMenu(colors),
+              child: NotificationListener<ScrollNotification>(
+                onNotification: (notification) {
+                  final scrolled = notification.metrics.pixels > 0;
+                  if (scrolled != _isScrolled) {
+                    setState(() => _isScrolled = scrolled);
+                  }
+                  return false;
+                },
+                child: Stack(
+                  children: [
+                    SingleChildScrollView(
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                      child: _selectedSetting != null
+                          ? _selectedSetting!.viewBuilder(context)
+                          : _buildMenu(colors),
+                    ),
+                    Positioned(
+                      top: 0,
+                      left: 0,
+                      right: 0,
+                      child: IgnorePointer(
+                        child: AnimatedOpacity(
+                          opacity: _isScrolled ? 1.0 : 0.0,
+                          duration: const Duration(milliseconds: 200),
+                          child: Container(
+                            height: 24,
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                begin: Alignment.topCenter,
+                                end: Alignment.bottomCenter,
+                                colors: [
+                                  colors.surface,
+                                  colors.surface.withValues(alpha: 0),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ],
@@ -176,7 +213,10 @@ class _SettingsBoxState extends State<SettingsBox> {
         if (_selectedSetting != null)
           HoverableIcon(
             iconData: Icons.arrow_back_ios_new,
-            onTap: () => setState(() => _selectedSetting = null),
+            onTap: () => setState(() {
+              _selectedSetting = null;
+              _isScrolled = false;
+            }),
             color: colors.iconDefault,
             hoverColor: colors.iconHover,
           ),
@@ -203,7 +243,10 @@ class _SettingsBoxState extends State<SettingsBox> {
               child: _MenuItem(
                 title: item.title,
                 icon: item.icon,
-                onTap: () => setState(() => _selectedSetting = item),
+                onTap: () => setState(() {
+                  _selectedSetting = item;
+                  _isScrolled = false;
+                }),
               ),
             );
           }).toList(),
