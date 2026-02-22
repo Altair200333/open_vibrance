@@ -101,7 +101,7 @@ class DotIndicator extends StatefulWidget {
         );
       case IndicatorState.expanded:
         return BoxDecoration(
-          color: colors.surfaceElevated,
+          color: isHovered ? colors.border : colors.surfaceElevated,
           borderRadius: BorderRadius.circular(kDotSize),
           border: Border.all(color: colors.textOnPrimary, width: 2),
           boxShadow: shadow,
@@ -133,7 +133,15 @@ class _DotIndicatorState extends State<DotIndicator> {
       case IndicatorState.error:
         return Icon(Icons.close, color: colors.textOnPrimary, size: kDotSize * 0.55);
       case IndicatorState.expanded:
-        return Icon(Icons.close, color: colors.textOnPrimary, size: kDotSize * 0.65);
+        return TweenAnimationBuilder<Color?>(
+          tween: ColorTween(
+            end: widget.isHovered ? colors.textOnPrimary : colors.textSecondary,
+          ),
+          duration: kHoverDuration,
+          curve: kHoverCurve,
+          builder: (context, color, _) =>
+              Icon(Icons.close, color: color, size: kDotSize * 0.55),
+        );
       case IndicatorState.idle:
         return IdleDots(isHovered: widget.isHovered);
       default:
