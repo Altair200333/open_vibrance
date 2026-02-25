@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
+import 'package:open_vibrance/transcription/elevenlabs_realtime_transcription_provider.dart';
 import 'package:open_vibrance/transcription/transcription_provider.dart';
 import 'package:open_vibrance/transcription/types.dart';
 import 'package:open_vibrance/services/storage_service.dart';
@@ -9,11 +10,14 @@ import 'package:open_vibrance/utils/common.dart';
 
 enum ElevenLabsModel {
   scribeV2('scribe_v2'),
+  scribeV2Realtime('scribe_v2_realtime'),
   scribeV1('scribe_v1'),
   scribeV1Experimental('scribe_v1_experimental');
 
   final String modelId;
   const ElevenLabsModel(this.modelId);
+
+  bool get isRealtime => this == ElevenLabsModel.scribeV2Realtime;
 }
 
 extension ElevenLabsModelExtension on ElevenLabsModel {
@@ -21,6 +25,8 @@ extension ElevenLabsModelExtension on ElevenLabsModel {
     switch (this) {
       case ElevenLabsModel.scribeV2:
         return 'Scribe v2';
+      case ElevenLabsModel.scribeV2Realtime:
+        return 'Scribe v2 Realtime';
       case ElevenLabsModel.scribeV1:
         return 'Scribe v1';
       case ElevenLabsModel.scribeV1Experimental:
@@ -57,6 +63,12 @@ class ElevenLabsTranscriptionProvider implements TranscriptionProvider {
 
     if (apiKey == null) {
       throw Exception('ElevenLabs API key not found');
+    }
+
+    // Delegate to realtime provider for WebSocket-based model
+    if (model.isRealtime) {
+      return ElevenLabsRealtimeTranscriptionProvider(apiKey)
+          .transcribe(audioBytes);
     }
 
     final uri = Uri.parse('https://api.elevenlabs.io/v1/speech-to-text');
