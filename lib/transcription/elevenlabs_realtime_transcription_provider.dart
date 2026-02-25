@@ -4,6 +4,7 @@ import 'dart:io';
 import 'dart:math';
 import 'dart:typed_data';
 
+import 'package:open_vibrance/transcription/streaming_transcription_provider.dart';
 import 'package:open_vibrance/transcription/transcription_provider.dart';
 import 'package:open_vibrance/utils/common.dart';
 
@@ -24,7 +25,7 @@ class _WavInfo {
 const _supportedSampleRates = {8000, 16000, 22050, 24000, 44100, 48000};
 
 class ElevenLabsRealtimeTranscriptionProvider
-    implements TranscriptionProvider {
+    implements TranscriptionProvider, StreamingTranscriptionProvider {
   final String _apiKey;
 
   ElevenLabsRealtimeTranscriptionProvider(this._apiKey);
@@ -312,5 +313,195 @@ class ElevenLabsRealtimeTranscriptionProvider
     );
 
     return completer.future;
+  }
+
+  // ---------------------------------------------------------------------------
+  // transcribeStream() — true real-time streaming
+  // ---------------------------------------------------------------------------
+
+  @override
+  Stream<String> transcribeStream(
+    Stream<Uint8List> pcmStream, {
+    required int sampleRate,
+  }) {
+    final committed = StringBuffer();
+    String latestPartial = '';
+    bool sessionStarted = false;
+    bool finalCommitSent = false;
+    final pendingChunks = <Uint8List>[];
+    Timer? inactivityTimer;
+
+    late final WebSocket ws;
+    late final StreamSubscription<Uint8List> pcmSub;
+    late final StreamController<String> controller;
+
+    void cleanup() {
+      inactivityTimer?.cancel();
+      try { ws.close(); } catch (_) {}
+    }
+
+    void startInactivityTimer() {
+      inactivityTimer?.cancel();
+      inactivityTimer = Timer(const Duration(seconds: 2), () {
+        if (!controller.isClosed) controller.close();
+        cleanup();
+      });
+    }
+
+    controller = StreamController<String>(
+      onCancel: () {
+        pcmSub.cancel();
+        cleanup();
+      },
+    );
+
+    () async {
+      try {
+        // 1. Connect WebSocket
+        final url = 'wss://api.elevenlabs.io/v1/speech-to-text/realtime'
+            '?model_id=scribe_v2_realtime'
+            '&audio_format=pcm_$sampleRate'
+            '&commit_strategy=manual';
+
+        ws = await WebSocket.connect(url, headers: {'xi-api-key': _apiKey});
+
+        // 2. Listen for incoming WS messages
+        ws.listen((raw) {
+          final msg = jsonDecode(raw as String) as Map<String, dynamic>;
+          final type = msg['message_type'] as String?;
+
+          switch (type) {
+            case 'session_started':
+              dprint('Realtime STT session started: ${msg['session_id']}');
+              sessionStarted = true;
+              for (final chunk in pendingChunks) {
+                _sendChunk(ws, chunk, sampleRate);
+              }
+              pendingChunks.clear();
+
+            case 'partial_transcript':
+              latestPartial = msg['text'] as String? ?? '';
+              final aggregated = committed.isEmpty
+                  ? latestPartial
+                  : '${committed.toString().trim()} $latestPartial';
+              if (aggregated.trim().isNotEmpty) {
+                controller.add(aggregated.trim());
+              }
+
+            case 'committed_transcript':
+              final text = msg['text'] as String? ?? '';
+              if (text.isNotEmpty) {
+                if (committed.isNotEmpty) committed.write(' ');
+                committed.write(text);
+              }
+              latestPartial = '';
+              if (committed.isNotEmpty) {
+                controller.add(committed.toString().trim());
+              }
+              if (finalCommitSent) {
+                // Final commit response received — close immediately
+                if (!controller.isClosed) controller.close();
+                cleanup();
+              } else {
+                startInactivityTimer();
+              }
+
+            // Error handling
+            case 'auth_error':
+            case 'quota_exceeded':
+            case 'rate_limited':
+            case 'session_time_limit_exceeded':
+            case 'chunk_size_exceeded':
+            case 'insufficient_audio_activity':
+            case 'transcriber_error':
+            case 'input_error':
+            case 'queue_overflow':
+              controller.addError(
+                Exception(_streamErrorMessage(type!, msg)),
+              );
+              cleanup();
+              if (!controller.isClosed) controller.close();
+
+            default:
+              if (type != null &&
+                  type != 'committed_transcript_with_timestamps') {
+                dprint('Unknown realtime STT message: $type');
+              }
+          }
+        }, onError: (e) {
+          if (!controller.isClosed) {
+            controller.addError(Exception('WebSocket error: $e'));
+            controller.close();
+          }
+        }, onDone: () {
+          if (!controller.isClosed) controller.close();
+        });
+
+        // 3. Forward PCM chunks from microphone → WebSocket as they arrive
+        pcmSub = pcmStream.listen(
+          (chunk) {
+            if (sessionStarted) {
+              _sendChunk(ws, chunk, sampleRate);
+            } else {
+              pendingChunks.add(chunk);
+            }
+          },
+          onError: (e) {
+            dprint('PCM stream error: $e');
+          },
+          onDone: () {
+            // 4. pcmStream ended (recording stopped) → send final commit
+            finalCommitSent = true;
+            try {
+              ws.add(jsonEncode({
+                'message_type': 'input_audio_chunk',
+                'audio_base_64': '',
+                'commit': true,
+                'sample_rate': sampleRate,
+              }));
+            } catch (_) {}
+            // Safety fallback — if no committed_transcript arrives
+            // within 5s after final commit, close the stream
+            inactivityTimer?.cancel();
+            inactivityTimer = Timer(const Duration(seconds: 5), () {
+              if (!controller.isClosed) controller.close();
+              cleanup();
+            });
+          },
+        );
+      } catch (e) {
+        if (!controller.isClosed) {
+          controller.addError(e);
+          controller.close();
+        }
+      }
+    }();
+
+    return controller.stream;
+  }
+
+  void _sendChunk(WebSocket ws, Uint8List chunk, int sampleRate) {
+    ws.add(jsonEncode({
+      'message_type': 'input_audio_chunk',
+      'audio_base_64': base64Encode(chunk),
+      'commit': false,
+      'sample_rate': sampleRate,
+    }));
+  }
+
+  String _streamErrorMessage(String type, Map<String, dynamic> msg) {
+    return switch (type) {
+      'auth_error' => 'Invalid ElevenLabs API key',
+      'quota_exceeded' => 'ElevenLabs quota exceeded — check your plan',
+      'rate_limited' => 'Rate limited — try again later',
+      'session_time_limit_exceeded' =>
+        'Recording too long for realtime — use Scribe v2 batch',
+      'chunk_size_exceeded' => 'Audio chunk too large',
+      'insufficient_audio_activity' => 'No speech detected in audio',
+      'transcriber_error' => 'Transcription error: ${msg['message']}',
+      'input_error' => 'Input error: ${msg['message']}',
+      'queue_overflow' => 'Server overloaded — try again later',
+      _ => 'ElevenLabs realtime error: $type - ${msg['message']}',
+    };
   }
 }

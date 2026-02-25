@@ -1,7 +1,10 @@
 import 'dart:async';
+import 'package:clipboard/clipboard.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:open_vibrance/services/transcription_service.dart';
+import 'package:open_vibrance/transcription/streaming_transcription_provider.dart';
+import 'package:open_vibrance/utils/clipboard.dart';
 import 'package:open_vibrance/utils/common.dart';
 import 'package:screen_retriever/screen_retriever.dart';
 import 'package:window_manager/window_manager.dart';
@@ -45,6 +48,11 @@ class _DotWindowState extends State<DotWindow> with WindowListener {
   Timer? _exitDebounce;
   Size _actualIdleSize = initialWindowSize;
 
+  // Streaming state
+  StreamingTranscriptionProvider? _streamingProvider;
+  StreamSubscription<String>? _transcriptSubscription;
+  String _lastTranscript = '';
+
   @override
   void initState() {
     super.initState();
@@ -68,7 +76,32 @@ class _DotWindowState extends State<DotWindow> with WindowListener {
   Future<void> _startRecording() async {
     try {
       _currentRecordingPath = await _historyRepository.generateRecordingPath();
-      await _audioService.start(path: _currentRecordingPath!);
+
+      // Check if real-time streaming is available
+      final streamingProvider = await _transcriptionService.getStreamingProvider();
+
+      if (streamingProvider != null) {
+        // ── REAL-TIME PATH ──
+        _streamingProvider = streamingProvider;
+        _lastTranscript = '';
+
+        final pcmStream = await _audioService.startStreaming();
+        final transcriptStream = streamingProvider.transcribeStream(
+          pcmStream,
+          sampleRate: 16000,
+        );
+
+        _transcriptSubscription = transcriptStream.listen(
+          (text) {
+            _lastTranscript = text;
+            dprint('Live transcript: $text');
+          },
+          onError: (e) => dprint('Streaming transcription error: $e'),
+        );
+      } else {
+        // ── BATCH PATH (existing, unchanged) ──
+        await _audioService.start(path: _currentRecordingPath!);
+      }
     } catch (e) {
       dprint('Recording failed: $e');
       if (!mounted) return;
@@ -118,12 +151,70 @@ class _DotWindowState extends State<DotWindow> with WindowListener {
       dprint('Not recording, cant stop');
       return;
     }
-    final path = await _audioService.stop();
-    if (path != null) {
-      await _transcribeFile(path);
-    } else {
+
+    if (_streamingProvider != null) {
+      // ── REAL-TIME PATH ──
+      try {
+        setState(() => _indicatorState = IndicatorState.transcribing);
+
+        // Stop recording → builds WAV from buffered PCM, saves to disk
+        final path = await _audioService.stopStreaming(_currentRecordingPath!);
+
+        // Wait for transcript stream to finish (commit + final response)
+        await _transcriptSubscription?.asFuture();
+        await _transcriptSubscription?.cancel();
+
+        final transcription = _lastTranscript;
+        _streamingProvider = null;
+        _transcriptSubscription = null;
+
+        if (transcription.isNotEmpty) {
+          // Copy to clipboard + paste
+          await FlutterClipboard.copy(transcription);
+          await Future.delayed(const Duration(milliseconds: 100));
+          await pasteContent();
+
+          // Save to history
+          await _historyRepository.addEntry(HistoryEntry(
+            id: _historyRepository.idFromPath(path),
+            audioFilePath: path,
+            transcription: transcription,
+            timestamp: DateTime.now(),
+            success: true,
+          ));
+          _historyRepository.cleanup();
+        }
+      } catch (e) {
+        dprint('Streaming transcription error: $e');
+
+        // Save error entry to history
+        try {
+          await _historyRepository.addEntry(HistoryEntry(
+            id: _historyRepository.idFromPath(_currentRecordingPath!),
+            audioFilePath: _currentRecordingPath!,
+            timestamp: DateTime.now(),
+            success: false,
+          ));
+        } catch (e) {
+          dprint('Failed to save error entry: $e');
+        }
+
+        if (!mounted) return;
+        setState(() => _indicatorState = IndicatorState.error);
+        await Future.delayed(const Duration(milliseconds: 1200));
+      }
+
       if (!mounted) return;
       setState(() => _indicatorState = IndicatorState.idle);
+    } else {
+      // ── BATCH PATH (existing, unchanged) ──
+      final path = await _audioService.stop();
+      if (path != null) {
+        await _transcribeFile(path);
+      } else {
+        if (!mounted) return;
+        setState(() => _indicatorState = IndicatorState.idle);
+      }
     }
   }
 
@@ -199,6 +290,7 @@ class _DotWindowState extends State<DotWindow> with WindowListener {
   @override
   void dispose() {
     _exitDebounce?.cancel();
+    _transcriptSubscription?.cancel();
     _shortcutHelper.dispose();
     _audioService.dispose();
     windowManager.removeListener(this);
