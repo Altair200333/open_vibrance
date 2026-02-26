@@ -1,133 +1,89 @@
-# Open Vibrance
+<div align="center">
+  <img src="imgs/logo.png" width="120" />
+  <h1>Open Vibrance</h1>
+  <p>System-wide push-to-talk transcription overlay.<br/>Hold a hotkey, speak, release — text is transcribed and pasted into your active app.</p>
 
-> <img src="imgs/logo.png" width="170" align="right"/>
+  <img src="imgs/demo.gif" alt="Open Vibrance demo" width="480" />
+</div>
 
-**Quick minimalistic transcription overlay**
+<br/>
 
-<img src="./imgs/demo.gif" alt="Demo" width="100" />
+## Quick Start
 
-## Table of Contents
+1. Download the latest release from [Releases](https://github.com/Altair200333/open_vibrance/releases)
+2. Click the overlay dot to open settings — select a provider and enter your API key
+3. Press `Alt+Q` to record, release to transcribe
 
-- [About](#-about)
-- [Download](#-download)
-- [Why is it good?](#-why-is-it-good)
-- [How to use](#-how-to-use)
-  - [Option 1: Use ready API provider](#option-1-use-ready-api-provider)
-  - [Option 2: Custom Python script](#option-2-custom-python-script-make-this-app-immortal)
-- [Screenshots](#-screenshots)
-- [How to build](#-how-to-build)
+> Bring your own key — the app is free, you provide an ElevenLabs or OpenAI API key.
 
-## 🚀 About
+## Providers
 
+| Provider | Models |
+|----------|--------|
+| **ElevenLabs** | Scribe v1, v1 Experimental, v2, v2 Realtime (WebSocket streaming) |
+| **OpenAI** | Whisper-1, GPT-4o Mini Transcribe, GPT-4o Transcribe |
+| **Custom** | Any STT service via a Python script |
 
-Open Vibrance is a simple desktop overlay that transcribes your speech. Hit a hotkey, speak, and your words are converted to text—copied to your clipboard and pasted directly into the app you're using.
+OpenAI providers support a custom prompt to guide transcription style and formatting.
 
-Transcription Providers:
-- *`Elevenlabs`* - Scribe-v1 models family
-- *`OpenAI`* - Whisper/gpt-4o models with prompting
-- *`Custom provider`* - write anything in Python 🐍
+## Features
 
-What can I use it for?
+- **Real-time streaming** — live transcription via ElevenLabs Scribe v2 Realtime
+- **Stays out of your way** — always-on-top, click-through transparent dot with state animations
+- **Auto paste** — transcribed text is copied to clipboard and pasted into the active window
+- **Transcription history** — browse past transcriptions with audio playback and one-click retry
+- **Configurable hotkey** — system-wide shortcut, default `Alt+Q`
+- **7 themes** — Dark, Light, Aubergine, Dracula, Nord, Solarized, Choco Mint
+- **Secure storage** — API keys stored in your OS keychain
+- **Cross-platform** — Windows, macOS, Linux
 
-- 🎧 **Coding** – Dictate comments, ideas, or quick (or not quick) coding prompts.
-- 🚀 **AI Prompting** – Craft your AI prompts quickly by speaking them out.
-- 💬 **Messaging** – Send fast replies in your chat apps.
-- 📝 **Note-taking** – Jot down thoughts without breaking your workflow.
+## Screenshots
 
-## ⏬ Download
+<details>
+<summary>Settings and indicator states</summary>
+<br/>
+<img src="imgs/main_menu.jpg" alt="Settings menu" width="320" />
+<img src="imgs/provider_menu.jpg" alt="Provider configuration" width="320" />
+<br/><br/>
+<img src="imgs/dot_hover.jpg" alt="Hover" width="100" />
+<img src="imgs/dot_recording.jpg" alt="Recording" width="50" />
+<img src="imgs/dot_processing.jpg" alt="Processing" width="70" />
+</details>
 
-Head to [Releases page](https://github.com/Altair200333/open_vibrance/releases) and download __win_64.rar__ file, extract into any location, and run `open_vibrance.exe`
+## Custom Provider
 
-## 💫 Why is it good?
-- 💰 **Kind of free xD:** The app itself is free. You use your own Elevenlabs/OpenAI API key
-- 🎙️ **Easy Hotkey Control:** Start and stop recording with a single hotkey.
-- 📋 **Automatic Paste & Clipboard:** Transcribed text is instantly pasted into your active app and also available on your clipboard.
-- 📌 **Minimal UI:** A small, draggable overlay dot shows recording status and stays out of your way.
-- 🌐 **Cross-platform (ideally):** Built with Flutter. 
-  - Runs on Windows, macOS, and Linux (Tested only on 🪟 Windows 😅. Help with testing on macOS/Linux is welcome!).
+<details>
+<summary>Use any STT service with a Python script</summary>
+<br/>
 
-## 🔊 How to use
-
-### Option 1: Use ready API provider
-
-1. Get OpenAI / Elevenlabs API key (make sure you have creadits!)
-2. Click on blue indicator, in `Transcription Provider` section select your provider and paste API key
-3. Hit *`Ctrl + Q`* (by default) and speak your text
-
-### Option 2: Custom *Python* script (make this app immortal)
-
-1. Click on blue indicator, in `Transcription Provider` select *Custom* option
-2. Prepare Python script that will transcribe your speech (feel free to force LLM to do that xD)
-    - Make sure Python is installed in your system and can be called from terminal using `python3` / `python` / `py`
-    - Take audio data from global variable `base64_audio` (it will be pasted in runtime, don't worry), this will hold base64 encoded audio string
-    - do whatever is required to transcribe that data
-    - `print` it out to console, (i.e. `print(transcript)`), because the app will read stdout
-
-
-#### Python Example with Elevenlabs:
+Select **Custom** in provider settings. Your script receives audio as a base64 string in the global variable `base64_audio`. Print the transcript to stdout.
 
 ```python
-import base64
-import requests
-
-# Assumes `base64_audio` is defined globally and contains
+import base64, requests
 
 audio_bytes = base64.b64decode(base64_audio)
 
-API_KEY = "<API_KEY>" # TODO paste it here
-URL     = 'https://api.elevenlabs.io/v1/speech-to-text'
-
-data = {
-    'model_id':               'scribe_v1',
-    'num_speakers':           1,
-    'tag_audio_events':       False,
-    'timestamps_granularity': 'none',
-}
-
-files = {
-    'file': ('audio.wav', audio_bytes, 'audio/wav'),
-}
-
-headers = {
-    'xi-api-key': API_KEY,
-}
-
-resp = requests.post(URL, headers=headers, data=data, files=files)
+resp = requests.post(
+    "https://api.elevenlabs.io/v1/speech-to-text",
+    headers={"xi-api-key": "<YOUR_KEY>"},
+    data={"model_id": "scribe_v1"},
+    files={"file": ("audio.wav", audio_bytes, "audio/wav")},
+)
 resp.raise_for_status()
-print(resp.json().get('text'))
+print(resp.json().get("text"))
 ```
 
-## 🎨 Screenshots
+Python must be accessible from your terminal (`python3` / `python` / `py`).
+</details>
 
-### Menus:
+## Build from Source
 
-<img src="./imgs/main_menu.jpg" alt="Demo" width="300" />
-<img src="./imgs/provider_menu.jpg" alt="Demo" width="300" />
+```bash
+git clone https://github.com/Altair200333/open_vibrance.git
+git clone https://github.com/Altair200333/window_manager.git
+cd open_vibrance
+flutter pub get
+flutter run -d windows  # or macos / linux
+```
 
-### Indicator states:
-
-<img src="./imgs/dot_hover.jpg" alt="Demo" width="100" />
-
-<img src="./imgs/dot_dragging.jpg" alt="Demo" width="100" />
-
-<img src="./imgs/dot_recording.jpg" alt="Demo" width="50" />
-
-<img src="./imgs/dot_processing.jpg" alt="Demo" width="70" />
-
-
-## 🛠️ How to build
-- **For developers:**
-    1.  Make sure you have the [Flutter SDK](https://flutter.dev/docs/get-started/install) installed.
-    2.  Clone this repository:
-        ```bash
-        git clone https://github.com/Altair200333/open_vibrance
-        cd open-vibrance
-        ```
-    3.  Get dependencies:
-        ```bash
-        flutter pub get
-        ```
-    4.  Run the app (replace `windows` with `macos` or `linux`):
-        ```bash
-        flutter run -d windows
-        ```
+Requires the [Flutter SDK](https://flutter.dev/docs/get-started/install). The app depends on a [forked window_manager](https://github.com/Altair200333/window_manager) — clone it next to the project directory.
