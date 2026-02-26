@@ -3,7 +3,7 @@
   <h1>Open Vibrance</h1>
   <p>System-wide push-to-talk transcription overlay.<br/>Hold a hotkey, speak, release — text is transcribed and pasted into your active app.</p>
 
-  <img src="imgs/demo.gif" alt="Open Vibrance demo" width="480" />
+  <img src="imgs/demo.gif" alt="Open Vibrance demo" width="240" />
 </div>
 
 <br/>
