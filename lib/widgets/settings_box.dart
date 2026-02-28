@@ -43,9 +43,23 @@ class SettingsBox extends StatefulWidget {
   State<SettingsBox> createState() => _SettingsBoxState();
 }
 
+class _ToastData {
+  final String message;
+  final IconData icon;
+  final String? actionLabel;
+  final VoidCallback? onAction;
+
+  const _ToastData({
+    required this.message,
+    required this.icon,
+    this.actionLabel,
+    this.onAction,
+  });
+}
+
 class _SettingsBoxState extends State<SettingsBox> {
   SettingsItem? _selectedSetting;
-  bool _showToast = false;
+  _ToastData? _toastData;
   bool _isScrolled = false;
   Timer? _toastTimer;
 
@@ -77,7 +91,8 @@ class _SettingsBoxState extends State<SettingsBox> {
             (context) => HistoryView(
               historyRepository: widget.historyRepository,
               transcriptionService: widget.transcriptionService,
-              onCopied: _showCopiedToast,
+              onToast: _showToastMessage,
+              onDismissToast: _dismissToast,
             ),
       ),
       SettingsItem(
@@ -88,15 +103,26 @@ class _SettingsBoxState extends State<SettingsBox> {
     ];
   }
 
-  void _showCopiedToast() {
+  void _showToastMessage(
+    String message, {
+    IconData icon = Icons.content_paste,
+    Duration duration = const Duration(seconds: 3),
+    String? actionLabel,
+    VoidCallback? onAction,
+  }) {
     _toastTimer?.cancel();
-    setState(() => _showToast = true);
-    _toastTimer = Timer(const Duration(seconds: 3), _dismissToast);
+    setState(() => _toastData = _ToastData(
+      message: message,
+      icon: icon,
+      actionLabel: actionLabel,
+      onAction: onAction,
+    ));
+    _toastTimer = Timer(duration, _dismissToast);
   }
 
   void _dismissToast() {
     _toastTimer?.cancel();
-    if (mounted) setState(() => _showToast = false);
+    if (mounted) setState(() => _toastData = null);
   }
 
   @override
@@ -189,15 +215,21 @@ class _SettingsBoxState extends State<SettingsBox> {
             left: 16,
             right: 16,
             child: IgnorePointer(
-              ignoring: !_showToast,
+              ignoring: _toastData == null,
               child: AnimatedOpacity(
-                opacity: _showToast ? 1.0 : 0.0,
+                opacity: _toastData != null ? 1.0 : 0.0,
                 duration: kHoverDuration,
                 child: AnimatedSlide(
-                  offset: _showToast ? Offset.zero : const Offset(0, 0.3),
+                  offset: _toastData != null ? Offset.zero : const Offset(0, 0.3),
                   duration: kHoverDuration,
                   curve: kHoverCurve,
-                  child: _Toast(onClose: _dismissToast),
+                  child: _Toast(
+                    message: _toastData?.message ?? '',
+                    icon: _toastData?.icon ?? Icons.content_paste,
+                    actionLabel: _toastData?.actionLabel,
+                    onAction: _toastData?.onAction,
+                    onClose: _dismissToast,
+                  ),
                 ),
               ),
             ),
@@ -255,9 +287,19 @@ class _SettingsBoxState extends State<SettingsBox> {
 }
 
 class _Toast extends StatelessWidget {
+  final String message;
+  final IconData icon;
+  final String? actionLabel;
+  final VoidCallback? onAction;
   final VoidCallback onClose;
 
-  const _Toast({required this.onClose});
+  const _Toast({
+    required this.message,
+    required this.icon,
+    this.actionLabel,
+    this.onAction,
+    required this.onClose,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -272,11 +314,11 @@ class _Toast extends StatelessWidget {
       ),
       child: Row(
         children: [
-          Icon(Icons.content_paste, color: colors.textSecondary, size: 16),
+          Icon(icon, color: colors.textSecondary, size: 16),
           const SizedBox(width: 10),
           Expanded(
             child: Text(
-              'Copied to clipboard',
+              message,
               style: TextStyle(
                 color: colors.textPrimary,
                 fontSize: kFontSizeMd,
@@ -284,6 +326,16 @@ class _Toast extends StatelessWidget {
               ),
             ),
           ),
+          if (actionLabel != null && onAction != null) ...[
+            _ToastAction(
+              label: actionLabel!,
+              onTap: () {
+                onAction!.call();
+                onClose();
+              },
+            ),
+            const SizedBox(width: 8),
+          ],
           HoverableIcon(
             iconData: Icons.close,
             onTap: onClose,
@@ -291,6 +343,44 @@ class _Toast extends StatelessWidget {
             hoverColor: colors.iconHover,
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _ToastAction extends StatefulWidget {
+  final String label;
+  final VoidCallback onTap;
+
+  const _ToastAction({required this.label, required this.onTap});
+
+  @override
+  State<_ToastAction> createState() => _ToastActionState();
+}
+
+class _ToastActionState extends State<_ToastAction> {
+  bool _hovering = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      onEnter: (_) => setState(() => _hovering = true),
+      onExit: (_) => setState(() => _hovering = false),
+      child: GestureDetector(
+        onTap: widget.onTap,
+        child: AnimatedDefaultTextStyle(
+          duration: kHoverDuration,
+          curve: kHoverCurve,
+          style: TextStyle(
+            color: _hovering ? colors.accent : colors.textSecondary,
+            fontSize: kFontSizeMd,
+            fontWeight: FontWeight.w600,
+          ),
+          child: Text(widget.label),
+        ),
       ),
     );
   }

@@ -395,11 +395,18 @@ class _DotWindowState extends State<DotWindow> with WindowListener {
       _indicatorState = isExpanded ? IndicatorState.idle : IndicatorState.expanded;
     });
 
+    // Hide window during resize to prevent visual flash & overflow
+    // (setBounds is not visually atomic on Windows — position and size
+    //  may apply in separate frames, causing a brief glitch).
+    await windowManager.setOpacity(0);
+
     // Relax constraints to allow target size, then set bounds atomically.
     // Locking min=max after setBounds can trigger Windows to re-adjust position.
     await windowManager.setMinimumSize(initialWindowSize);
     await windowManager.setMaximumSize(expandedWindowSize);
     await windowManager.setBounds(bounds);
+
+    await windowManager.setOpacity(1);
 
     // Restore click-through after collapsing back to idle
     if (isExpanded) {

@@ -71,6 +71,55 @@ class HistoryRepository {
     await _saveEntries(entries);
   }
 
+  Future<void> deleteEntry(String id) async {
+    final entries = await loadEntries();
+    final index = entries.indexWhere((e) => e.id == id);
+    if (index == -1) return;
+
+    final entry = entries.removeAt(index);
+
+    // Delete audio file if no other entry references it
+    final stillReferenced = entries.any((e) => e.audioFilePath == entry.audioFilePath);
+    if (!stillReferenced) {
+      final file = File(entry.audioFilePath);
+      if (await file.exists()) {
+        await file.delete();
+      }
+    }
+
+    await _saveEntries(entries);
+  }
+
+  /// Removes entry from JSON/cache but keeps the audio file on disk.
+  /// Returns (entry, originalIndex) for undo support, or null if not found.
+  Future<(HistoryEntry, int)?> softDeleteEntry(String id) async {
+    final entries = await loadEntries();
+    final index = entries.indexWhere((e) => e.id == id);
+    if (index == -1) return null;
+    final entry = entries.removeAt(index);
+    await _saveEntries(entries);
+    return (entry, index);
+  }
+
+  /// Re-inserts an entry at a specific index (for undo restore).
+  Future<void> insertEntryAt(HistoryEntry entry, int index) async {
+    final entries = await loadEntries();
+    entries.insert(index.clamp(0, entries.length), entry);
+    await _saveEntries(entries);
+  }
+
+  /// Deletes the audio file if no remaining entry references it.
+  Future<void> deleteAudioIfUnreferenced(String audioFilePath) async {
+    final entries = await loadEntries();
+    final stillReferenced = entries.any((e) => e.audioFilePath == audioFilePath);
+    if (!stillReferenced) {
+      final file = File(audioFilePath);
+      if (await file.exists()) {
+        await file.delete();
+      }
+    }
+  }
+
   Future<void> cleanup() async {
     final entries = await loadEntries();
     if (entries.length <= maxEntries) return;
