@@ -17,26 +17,26 @@ class IdleDots extends StatelessWidget {
       opacity: isHovered ? 1.0 : 0.0,
       duration: const Duration(milliseconds: 300),
       curve: Curves.easeInOutCubic,
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          const count = 3;
-          return Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            spacing: 4,
-            children: List.generate(count, (index) {
-              final size = isHovered ? kDotSize * 0.25 : kDotSize * 0.1;
-              return AnimatedContainer(
-                duration: const Duration(milliseconds: 200),
-                width: size,
-                height: size,
-                decoration: BoxDecoration(
-                  color: colors.textOnPrimary,
-                  shape: BoxShape.circle,
-                ),
-              );
-            }),
-          );
-        },
+      child: OverflowBox(
+        maxWidth: double.infinity,
+        alignment: Alignment.center,
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
+          spacing: 4,
+          children: List.generate(3, (index) {
+            final size = isHovered ? kDotSize * 0.25 : kDotSize * 0.1;
+            return AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              width: size,
+              height: size,
+              decoration: BoxDecoration(
+                color: colors.textOnPrimary,
+                shape: BoxShape.circle,
+              ),
+            );
+          }),
+        ),
       ),
     );
   }

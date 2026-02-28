@@ -167,6 +167,7 @@ class _DotIndicatorState extends State<DotIndicator> {
     final container = AnimatedContainer(
       duration: const Duration(milliseconds: 180),
       curve: Curves.easeInOutCubic,
+      clipBehavior: Clip.hardEdge,
       width: width,
       height: height,
       decoration: widget._indicatorDotDecoration(colors),
