@@ -35,7 +35,7 @@ class TranscriptionService {
 
     switch (providerKey) {
       case TranscriptionProviderKey.elevenlabs:
-        return ElevenLabsTranscriptionProvider();
+        return ElevenLabsTranscriptionProvider(storageService: _storageService);
       case TranscriptionProviderKey.openai:
         return OpenAITranscriptionProvider();
       case TranscriptionProviderKey.custom:
@@ -52,18 +52,25 @@ class TranscriptionService {
     if (providerKey != TranscriptionProviderKey.elevenlabs) return null;
 
     // Check if the selected ElevenLabs model is realtime
-    final modelId = await _storageService.readValue(StorageKey.elevenLabsModel.key);
+    final modelId = await _storageService.readValue(
+      StorageKey.elevenLabsModel.key,
+    );
     final model = ElevenLabsModelExtension.fromKey(modelId);
     if (!model.isRealtime) return null;
 
     // Load API key
-    final apiKey = await _storageService.readValue(StorageKey.elevenLabsApiKey.key);
+    final apiKey = await _storageService.readValue(
+      StorageKey.elevenLabsApiKey.key,
+    );
     if (apiKey == null) throw Exception('ElevenLabs API key not found');
 
     return ElevenLabsRealtimeTranscriptionProvider(apiKey);
   }
 
-  Future<String> transcribeFileAndPaste(String path, {bool paste = true}) async {
+  Future<String> transcribeFileAndPaste(
+    String path, {
+    bool paste = true,
+  }) async {
     final provider = await _getProvider();
     final bytes = await File(path).readAsBytes();
     final transcription = await provider.transcribe(bytes);
@@ -78,6 +85,18 @@ class TranscriptionService {
       await pasteContent();
     }
 
+    return transcription;
+  }
+
+  /// Correctness fallback for a failed realtime ElevenLabs session.
+  /// Always uses the batch Scribe v2 endpoint, regardless of the selected model.
+  Future<String> transcribeFileWithElevenLabsBatch(String path) async {
+    final bytes = await File(path).readAsBytes();
+    final transcription = await ElevenLabsTranscriptionProvider(
+      modelOverride: ElevenLabsModel.scribeV2,
+      storageService: _storageService,
+    ).transcribe(bytes);
+    dprint('ElevenLabs batch fallback transcription: $transcription');
     return transcription;
   }
 }

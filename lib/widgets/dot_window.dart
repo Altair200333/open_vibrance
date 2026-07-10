@@ -3,7 +3,7 @@ import 'package:clipboard/clipboard.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:open_vibrance/services/transcription_service.dart';
-import 'package:open_vibrance/transcription/streaming_transcription_provider.dart';
+import 'package:open_vibrance/services/recording_session.dart';
 import 'package:open_vibrance/utils/clipboard.dart';
 import 'package:open_vibrance/utils/common.dart';
 import 'package:screen_retriever/screen_retriever.dart';
@@ -44,14 +44,13 @@ class _DotWindowState extends State<DotWindow> with WindowListener {
   final ShortcutHelper _shortcutHelper = ShortcutHelper();
   final TranscriptionService _transcriptionService = TranscriptionService();
   final HistoryRepository _historyRepository = HistoryRepository();
-  String? _currentRecordingPath;
   Timer? _exitDebounce;
   Size _actualIdleSize = initialWindowSize;
 
-  // Streaming state
-  StreamingTranscriptionProvider? _streamingProvider;
-  StreamSubscription<String>? _transcriptSubscription;
-  String _lastTranscript = '';
+  RecordingSession? _session;
+  Future<void>? _startRecordingFuture;
+  Future<void>? _stopRecordingFuture;
+  bool _disposed = false;
 
   @override
   void initState() {
@@ -74,163 +73,291 @@ class _DotWindowState extends State<DotWindow> with WindowListener {
   }
 
   Future<void> _startRecording() async {
+    String? path;
     try {
-      _currentRecordingPath = await _historyRepository.generateRecordingPath();
-
-      // Check if real-time streaming is available
-      final streamingProvider = await _transcriptionService.getStreamingProvider();
+      path = await _historyRepository.generateRecordingPath();
+      if (_disposed) return;
+      final streamingProvider =
+          await _transcriptionService.getStreamingProvider();
+      if (_disposed) return;
 
       if (streamingProvider != null) {
-        // ── REAL-TIME PATH ──
-        _streamingProvider = streamingProvider;
-        _lastTranscript = '';
-
         final pcmStream = await _audioService.startStreaming();
-        final transcriptStream = streamingProvider.transcribeStream(
-          pcmStream,
-          sampleRate: 16000,
+        if (_disposed) {
+          await _audioService.forceReset();
+          return;
+        }
+        final transcriptDone = Completer<void>();
+
+        final session = StreamingSession(
+          recordingPath: path,
+          provider: streamingProvider,
+          transcriptDone: transcriptDone,
         );
 
-        _transcriptSubscription = transcriptStream.listen(
-          (text) {
-            _lastTranscript = text;
-            dprint('Live transcript: $text');
-          },
-          onError: (e) => dprint('Streaming transcription error: $e'),
-        );
+        // Callbacks reference `session` safely — they fire after this sync block.
+        session.transcriptSubscription = streamingProvider
+            .transcribeStream(pcmStream, sampleRate: 16000)
+            .listen(
+              (text) {
+                session.lastTranscript = text;
+                dprint('Live transcript: $text');
+              },
+              onError: (e) {
+                dprint('Streaming transcription error: $e');
+                session.transcriptError = e;
+                if (!transcriptDone.isCompleted) transcriptDone.complete();
+              },
+              onDone: () {
+                if (!transcriptDone.isCompleted) transcriptDone.complete();
+              },
+            );
+
+        if (_disposed) {
+          await session.dispose();
+          await _audioService.forceReset();
+          return;
+        }
+        _session = session;
       } else {
-        // ── BATCH PATH (existing, unchanged) ──
-        await _audioService.start(path: _currentRecordingPath!);
+        await _audioService.start(path: path);
+        if (_disposed) {
+          await _audioService.forceReset();
+          return;
+        }
+        _session = BatchSession(recordingPath: path);
       }
     } catch (e) {
       dprint('Recording failed: $e');
-      if (!mounted) return;
-      setState(() => _indicatorState = IndicatorState.idle);
-    }
-  }
-
-  Future<void> _transcribeFile(String path) async {
-    try {
-      setState(() => _indicatorState = IndicatorState.transcribing);
-
-      final transcription = await _transcriptionService.transcribeFileAndPaste(path);
-
-      await _historyRepository.addEntry(HistoryEntry(
-        id: _historyRepository.idFromPath(path),
-        audioFilePath: path,
-        transcription: transcription,
-        timestamp: DateTime.now(),
-        success: true,
-      ));
-      _historyRepository.cleanup();
-    } catch (e) {
-      dprint('Error transcribing file: $e');
-
+      if (_disposed) return;
       try {
-        await _historyRepository.addEntry(HistoryEntry(
-          id: _historyRepository.idFromPath(path),
-          audioFilePath: path,
-          timestamp: DateTime.now(),
-          success: false,
-        ));
-      } catch (e) {
-        dprint('Failed to save error entry: $e');
+        await _audioService.forceReset();
+      } catch (_) {}
+      await _saveErrorEntry(path: path);
+      await _endSession();
+      if (!mounted) {
+        return;
       }
-
-      if (!mounted) return;
-      setState(() => _indicatorState = IndicatorState.error);
-      await Future.delayed(const Duration(milliseconds: 1200));
+      await _showErrorThenIdle();
     }
-
-    if (!mounted) return;
-    setState(() => _indicatorState = IndicatorState.idle);
   }
 
   Future<void> _stopRecording() async {
     if (!_canStopRecording()) {
-      dprint('Not recording, cant stop');
       return;
     }
 
-    if (_streamingProvider != null) {
-      // ── REAL-TIME PATH ──
+    // Serialize with _startRecording — do NOT set state yet.
+    if (_startRecordingFuture != null) {
       try {
-        setState(() => _indicatorState = IndicatorState.transcribing);
+        await _startRecordingFuture;
+      } catch (_) {}
+      _startRecordingFuture = null;
+    }
 
-        // Stop recording → builds WAV from buffered PCM, saves to disk
-        final path = await _audioService.stopStreaming(_currentRecordingPath!);
+    if (_disposed || !mounted) {
+      return;
+    }
 
-        // Wait for transcript stream to finish (commit + final response)
-        await _transcriptSubscription?.asFuture();
-        await _transcriptSubscription?.cancel();
+    // Re-check: start may have failed (→idle) or another stop may have
+    // already set transcribing. Either way, nothing to do.
+    if (!_canStopRecording()) {
+      dprint('Recording start failed or already stopping');
+      return;
+    }
 
-        final transcription = _lastTranscript;
-        _streamingProvider = null;
-        _transcriptSubscription = null;
+    setState(() => _indicatorState = IndicatorState.transcribing);
 
-        if (transcription.isNotEmpty) {
-          // Copy to clipboard + paste
-          await FlutterClipboard.copy(transcription);
-          await Future.delayed(const Duration(milliseconds: 100));
-          await pasteContent();
-
-          // Save to history
-          await _historyRepository.addEntry(HistoryEntry(
-            id: _historyRepository.idFromPath(path),
-            audioFilePath: path,
-            transcription: transcription,
-            timestamp: DateTime.now(),
-            success: true,
-          ));
-          _historyRepository.cleanup();
-        }
-      } catch (e) {
-        dprint('Streaming transcription error: $e');
-
-        // Save error entry to history
-        try {
-          await _historyRepository.addEntry(HistoryEntry(
-            id: _historyRepository.idFromPath(_currentRecordingPath!),
-            audioFilePath: _currentRecordingPath!,
-            timestamp: DateTime.now(),
-            success: false,
-          ));
-        } catch (e) {
-          dprint('Failed to save error entry: $e');
-        }
-
-        if (!mounted) return;
-        setState(() => _indicatorState = IndicatorState.error);
-        await Future.delayed(const Duration(milliseconds: 1200));
-      }
-
-      if (!mounted) return;
-      setState(() => _indicatorState = IndicatorState.idle);
-    } else {
-      // ── BATCH PATH (existing, unchanged) ──
-      final path = await _audioService.stop();
-      if (path != null) {
-        await _transcribeFile(path);
-      } else {
-        if (!mounted) return;
+    final session = _session;
+    if (session == null) {
+      if (mounted) {
         setState(() => _indicatorState = IndicatorState.idle);
       }
+      return;
+    }
+
+    try {
+      switch (session) {
+        case StreamingSession():
+          await _stopStreaming(session);
+        case BatchSession():
+          await _stopBatch(session);
+      }
+    } catch (e) {
+      dprint('Stop recording error: $e');
+      if (_disposed) return;
+      try {
+        await _audioService.forceReset();
+      } catch (_) {}
+      await _saveErrorEntry(path: session.recordingPath);
+      if (!mounted) {
+        return;
+      }
+      await _showErrorThenIdle();
+    } finally {
+      await _endSession();
     }
   }
 
-  bool _canStartRecording() => _indicatorState == IndicatorState.idle;
+  Future<void> _stopStreaming(StreamingSession session) async {
+    final path = await _audioService.stopStreaming(session.recordingPath);
+    await session.transcriptDone.future;
+    if (_disposed || session.cancelled) return;
+    var transcription = session.lastTranscript;
 
-  bool _canStopRecording() => _indicatorState == IndicatorState.recording;
+    if (session.transcriptError != null) {
+      dprint(
+        'Realtime finalization failed, using saved WAV batch fallback: '
+        '${session.transcriptError}',
+      );
+      transcription = await _transcriptionService
+          .transcribeFileWithElevenLabsBatch(path);
+      if (_disposed || session.cancelled) return;
+    }
+
+    // Save history FIRST — clipboard failure must not lose the transcription
+    await _saveHistoryEntry(
+      path: path,
+      transcription: transcription.isNotEmpty ? transcription : null,
+      success: transcription.isNotEmpty,
+    );
+
+    if (_disposed || session.cancelled) return;
+
+    if (transcription.isNotEmpty) {
+      try {
+        await FlutterClipboard.copy(transcription);
+        await Future.delayed(const Duration(milliseconds: 100));
+        await pasteContent();
+      } catch (e) {
+        dprint('Clipboard/paste failed: $e');
+      }
+    }
+
+    if (!mounted) {
+      return;
+    }
+    setState(() => _indicatorState = IndicatorState.idle);
+  }
+
+  Future<void> _stopBatch(BatchSession session) async {
+    final path = await _audioService.stop();
+
+    if (_disposed) return;
+
+    if (path == null) {
+      await _saveErrorEntry(path: session.recordingPath);
+      if (!mounted) {
+        return;
+      }
+      setState(() => _indicatorState = IndicatorState.idle);
+      return;
+    }
+
+    final transcription = await _transcriptionService.transcribeFileAndPaste(
+      path,
+    );
+
+    if (_disposed) return;
+
+    await _saveHistoryEntry(
+      path: path,
+      transcription: transcription,
+      success: true,
+    );
+
+    if (!mounted) {
+      return;
+    }
+    setState(() => _indicatorState = IndicatorState.idle);
+  }
+
+  Future<void> _endSession() async {
+    try {
+      await _session?.dispose();
+    } catch (e) {
+      dprint('Session dispose error: $e');
+    } finally {
+      _session = null;
+    }
+  }
+
+  /// Throws on failure — callers in success paths let this propagate to their
+  /// catch block (which saves an error entry and shows the error indicator).
+  Future<void> _saveHistoryEntry({
+    required String path,
+    String? transcription,
+    required bool success,
+  }) async {
+    await _historyRepository.addEntry(
+      HistoryEntry(
+        id: _historyRepository.idFromPath(path),
+        audioFilePath: path,
+        transcription: transcription,
+        timestamp: DateTime.now(),
+        success: success,
+      ),
+    );
+    if (success) {
+      _historyRepository.cleanup();
+    }
+  }
+
+  /// Saves an error entry. Accepts explicit [path] for cases where _session
+  /// hasn't been assigned yet. Swallows exceptions (already in error path).
+  Future<void> _saveErrorEntry({String? path}) async {
+    final recordingPath = path ?? _session?.recordingPath;
+    if (recordingPath == null) {
+      return;
+    }
+    try {
+      await _saveHistoryEntry(path: recordingPath, success: false);
+    } catch (e) {
+      dprint('Failed to save error entry: $e');
+    }
+  }
+
+  Future<void> _showErrorThenIdle() async {
+    if (!mounted) {
+      return;
+    }
+    setState(() => _indicatorState = IndicatorState.error);
+    await Future.delayed(const Duration(milliseconds: 1200));
+    if (!mounted) {
+      return;
+    }
+    setState(() => _indicatorState = IndicatorState.idle);
+  }
+
+  bool _canStartRecording() =>
+      !_disposed && _indicatorState == IndicatorState.idle;
+
+  bool _canStopRecording() =>
+      !_disposed && _indicatorState == IndicatorState.recording;
 
   void _onStartRecording() {
     if (!_canStartRecording()) {
       return;
     }
     setState(() => _indicatorState = IndicatorState.recording);
-    _startRecording();
+    _startRecordingFuture = _startRecording();
   }
 
-  void _onStopRecording() => _stopRecording();
+  void _onStopRecording() {
+    if (_stopRecordingFuture != null) return;
+
+    late final Future<void> stopFuture;
+    stopFuture = _stopRecording()
+        .catchError((e) {
+          dprint('Unhandled stop recording error: $e');
+        })
+        .whenComplete(() {
+          if (identical(_stopRecordingFuture, stopFuture)) {
+            _stopRecordingFuture = null;
+          }
+        });
+    _stopRecordingFuture = stopFuture;
+  }
 
   @override
   void onWindowMoved() {
@@ -289,12 +416,40 @@ class _DotWindowState extends State<DotWindow> with WindowListener {
 
   @override
   void dispose() {
+    _disposed = true;
     _exitDebounce?.cancel();
-    _transcriptSubscription?.cancel();
+    // Cancel transcript finalization immediately. `_disposed` prevents the
+    // stop path from saving or pasting any provisional value.
+    final sessionDisposal = _endSession();
+    unawaited(
+      _disposeRecordingResources(
+        _startRecordingFuture,
+        _stopRecordingFuture,
+        sessionDisposal,
+      ),
+    );
     _shortcutHelper.dispose();
-    _audioService.dispose();
     windowManager.removeListener(this);
     super.dispose();
+  }
+
+  Future<void> _disposeRecordingResources(
+    Future<void>? startFuture,
+    Future<void>? stopFuture,
+    Future<void> sessionDisposal,
+  ) async {
+    try {
+      await startFuture;
+    } catch (_) {}
+    try {
+      await stopFuture;
+    } catch (_) {}
+    await sessionDisposal;
+    await _endSession();
+    try {
+      await _audioService.forceReset();
+    } catch (_) {}
+    _audioService.dispose();
   }
 
   BoxDecoration? getWindowBoxDecoration() {
@@ -392,7 +547,8 @@ class _DotWindowState extends State<DotWindow> with WindowListener {
     if (!mounted) return;
     setState(() {
       _settingsBoxVisible = !isExpanded;
-      _indicatorState = isExpanded ? IndicatorState.idle : IndicatorState.expanded;
+      _indicatorState =
+          isExpanded ? IndicatorState.idle : IndicatorState.expanded;
     });
 
     // Hide window during resize to prevent visual flash & overflow
@@ -491,15 +647,16 @@ class _DotWindowState extends State<DotWindow> with WindowListener {
                       _buildDragHandle(),
                       ListenableBuilder(
                         listenable: _audioService,
-                        builder: (context, _) => DotIndicator(
-                          state: _indicatorState,
-                          onTap: onIndicatorTap,
-                          onEnter: onMouseEnterIndicator,
-                          onExit: onMouseExitIndicator,
-                          onHover: onHoverIndicator,
-                          volume: _audioService.amplitude,
-                          isHovered: _hoveringIndicator,
-                        ),
+                        builder:
+                            (context, _) => DotIndicator(
+                              state: _indicatorState,
+                              onTap: onIndicatorTap,
+                              onEnter: onMouseEnterIndicator,
+                              onExit: onMouseExitIndicator,
+                              onHover: onHoverIndicator,
+                              volume: _audioService.amplitude,
+                              isHovered: _hoveringIndicator,
+                            ),
                       ),
                     ],
                   ),
