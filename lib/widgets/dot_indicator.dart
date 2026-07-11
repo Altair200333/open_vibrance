@@ -18,6 +18,8 @@ const double kMaxVolumeDb = 0.0;
 class DotIndicator extends StatefulWidget {
   final IndicatorState state;
   final VoidCallback onTap;
+  final GestureTapDownCallback? onTapDown;
+  final VoidCallback? onTapCancel;
   final PointerEnterEventListener onEnter;
   final PointerExitEventListener onExit;
   final PointerHoverEventListener onHover;
@@ -28,6 +30,8 @@ class DotIndicator extends StatefulWidget {
     super.key,
     required this.state,
     required this.onTap,
+    this.onTapDown,
+    this.onTapCancel,
     required this.onEnter,
     required this.onExit,
     required this.onHover,
@@ -74,7 +78,9 @@ class DotIndicator extends StatefulWidget {
   }
 
   BoxDecoration _indicatorDotDecoration(AppColorTheme colors) {
-    final shadow = [BoxShadow(color: colors.shadow, blurRadius: 6, spreadRadius: 1)];
+    final shadow = [
+      BoxShadow(color: colors.shadow, blurRadius: 6, spreadRadius: 1),
+    ];
 
     switch (state) {
       case IndicatorState.recording:
@@ -117,7 +123,10 @@ class DotIndicator extends StatefulWidget {
         return BoxDecoration(
           color: colors.border,
           borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: colors.textOnPrimary.withAlpha(180), width: 1.5),
+          border: Border.all(
+            color: colors.textOnPrimary.withAlpha(180),
+            width: 1.5,
+          ),
         );
     }
   }
@@ -131,7 +140,11 @@ class _DotIndicatorState extends State<DotIndicator> {
       case IndicatorState.transcribing:
         return const PulseDots();
       case IndicatorState.error:
-        return Icon(Icons.close, color: colors.textOnPrimary, size: kDotSize * 0.55);
+        return Icon(
+          Icons.close,
+          color: colors.textOnPrimary,
+          size: kDotSize * 0.55,
+        );
       case IndicatorState.expanded:
         return TweenAnimationBuilder<Color?>(
           tween: ColorTween(
@@ -139,8 +152,9 @@ class _DotIndicatorState extends State<DotIndicator> {
           ),
           duration: kHoverDuration,
           curve: kHoverCurve,
-          builder: (context, color, _) =>
-              Icon(Icons.close, color: color, size: kDotSize * 0.55),
+          builder:
+              (context, color, _) =>
+                  Icon(Icons.close, color: color, size: kDotSize * 0.55),
         );
       case IndicatorState.idle:
         return IdleDots(isHovered: widget.isHovered);
@@ -186,6 +200,8 @@ class _DotIndicatorState extends State<DotIndicator> {
     final height = widget._indicatorDotHeight;
     return GestureDetector(
       onTap: widget.onTap,
+      onTapDown: widget.onTapDown,
+      onTapCancel: widget.onTapCancel,
       child: MouseRegion(
         cursor: SystemMouseCursors.click,
         onEnter: widget.onEnter,

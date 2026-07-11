@@ -20,11 +20,15 @@ const double _springEpsilon = 0.01;
 class DragHandle extends StatefulWidget {
   final bool dragging;
   final bool showWindowContent;
+  final ValueChanged<bool>? onHoverChanged;
+  final VoidCallback? onDragStart;
 
   const DragHandle({
     super.key,
     required this.dragging,
     required this.showWindowContent,
+    this.onHoverChanged,
+    this.onDragStart,
   });
 
   @override
@@ -128,8 +132,7 @@ class _DragHandleState extends State<DragHandle>
     final dt = switch (_lastTickTime) {
       final last? => (elapsed - last).inMicroseconds / 1e6,
       null => 0.016,
-    }
-        .clamp(0.001, 0.033);
+    }.clamp(0.001, 0.033);
     _lastTickTime = elapsed;
 
     // Semi-implicit Euler integration
@@ -159,11 +162,20 @@ class _DragHandleState extends State<DragHandle>
       child: ScaleTransition(
         scale: _curved,
         child: GestureDetector(
-          onPanStart: (details) => windowManager.startDragging(),
+          onPanStart: (_) {
+            widget.onDragStart?.call();
+            unawaited(windowManager.startDragging());
+          },
           child: MouseRegion(
             cursor: SystemMouseCursors.click,
-            onEnter: (_) => setState(() => _hovering = true),
-            onExit: (_) => setState(() => _hovering = false),
+            onEnter: (_) {
+              setState(() => _hovering = true);
+              widget.onHoverChanged?.call(true);
+            },
+            onExit: (_) {
+              setState(() => _hovering = false);
+              widget.onHoverChanged?.call(false);
+            },
             child: AnimatedScale(
               scale: isHandleActive ? 1.1 : 1.0,
               duration: kHoverDuration,
