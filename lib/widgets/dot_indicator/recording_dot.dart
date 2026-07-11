@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:open_vibrance/services/audio_spectrum_analyzer.dart';
 import 'package:open_vibrance/services/recording_membrane.dart';
+import 'package:open_vibrance/services/recording_membrane_impact.dart';
 
 export 'package:open_vibrance/services/recording_membrane.dart'
     show
@@ -37,35 +38,47 @@ class _RecordingDotState extends State<RecordingDot>
 
   late final RecordingMembraneMapper _mapper;
   late final RecordingMembraneDynamics _dynamics;
+  late final RecordingMembraneImpactController _impactController;
   late final Ticker _ticker;
   late RecordingMembraneTarget _visualTarget;
   final List<List<double>> _history = [];
   Duration? _lastTickTime;
   int? _lastSpectrumSequence;
   bool _hadSpectrum = false;
+  bool _impactSpawned = false;
   double _historyElapsed = 0;
 
   @override
   void initState() {
     super.initState();
     _mapper = RecordingMembraneMapper();
+    _impactController = RecordingMembraneImpactController();
     _visualTarget = _resolveTarget();
     _dynamics = RecordingMembraneDynamics(_visualTarget.coefficients);
     _history.add(_dynamics.snapshot);
     _ticker = createTicker(_onTick);
+    if (_impactController.hasActiveImpacts) _ensureTickerRunning();
   }
 
   @override
   void didUpdateWidget(covariant RecordingDot oldWidget) {
     super.didUpdateWidget(oldWidget);
     _visualTarget = _resolveTarget();
-    if (_dynamics.retarget(_visualTarget.coefficients)) _ensureTickerRunning();
+    final geometryRetargeted = _dynamics.retarget(_visualTarget.coefficients);
+    if (geometryRetargeted ||
+        _impactSpawned ||
+        _impactController.hasActiveImpacts) {
+      _ensureTickerRunning();
+    }
   }
 
   RecordingMembraneTarget _resolveTarget() {
+    _impactSpawned = false;
     final spectrum = widget.spectrumFrame;
     if (!spectrum.hasSpectrum) {
+      if (_hadSpectrum) _impactController.reset();
       _hadSpectrum = false;
+      _lastSpectrumSequence = null;
       return _mapper.map(
         level: widget.level,
         bands: List<double>.filled(AudioSpectrumFrame.bandCount, 0),
@@ -82,6 +95,7 @@ class _RecordingDotState extends State<RecordingDot>
         previousSequence != null &&
         spectrum.sequence < previousSequence) {
       _mapper.reset();
+      _impactController.reset();
       _history.clear();
       _historyElapsed = 0;
     }
@@ -91,15 +105,21 @@ class _RecordingDotState extends State<RecordingDot>
                 spectrum.sequence > previousSequence
             ? spectrum.sequence - previousSequence
             : 1;
+    final elapsedSeconds =
+        sequenceDelta * RecordingMembraneMapper.defaultFrameSeconds;
+    if (_hadSpectrum && elapsedSeconds > 0.25) {
+      _impactController.reset();
+    }
     _hadSpectrum = true;
     _lastSpectrumSequence = spectrum.sequence;
-    return _mapper.map(
+    final target = _mapper.map(
       level: spectrum.level,
       bands: spectrum.bands,
       flux: spectrum.flux,
-      elapsedSeconds:
-          sequenceDelta * RecordingMembraneMapper.defaultFrameSeconds,
+      elapsedSeconds: elapsedSeconds,
     );
+    _impactSpawned = _impactController.processTarget(target) != null;
+    return target;
   }
 
   void _ensureTickerRunning() {
@@ -119,12 +139,14 @@ class _RecordingDotState extends State<RecordingDot>
     if (dt > RecordingMembraneDynamics.maxIntegratedSeconds) {
       _history.clear();
       _historyElapsed = 0;
+      _impactController.clear();
     }
-    final stillMoving = _dynamics.advance(dt);
+    final geometryMoving = _dynamics.advance(dt);
+    final impactMoving = _impactController.advance(dt);
     _captureHistory(dt);
     if (!mounted) return;
     setState(() {});
-    if (!stillMoving) {
+    if (!geometryMoving && !impactMoving) {
       _ticker.stop();
       _lastTickTime = null;
     }
@@ -157,6 +179,7 @@ class _RecordingDotState extends State<RecordingDot>
               coefficients: _dynamics.snapshot,
               velocity: _dynamics.velocity,
               history: _history,
+              impacts: _impactController.impacts,
               level: _visualTarget.level,
               flux: _visualTarget.flux,
               novelty: _visualTarget.novelty,
@@ -176,6 +199,7 @@ class RecordingMembranePainter extends CustomPainter {
     required List<double> coefficients,
     List<double>? velocity,
     List<List<double>> history = const [],
+    List<RecordingMembraneImpactSnapshot> impacts = const [],
     this.level = 0,
     this.flux = 0,
     this.novelty = 0,
@@ -197,7 +221,8 @@ class RecordingMembranePainter extends CustomPainter {
              RecordingMembraneModel.validatedCoefficients(frame),
            ),
          ),
-       );
+       ),
+       impacts = List<RecordingMembraneImpactSnapshot>.unmodifiable(impacts);
 
   static const double canvasSize = 30;
   static const double strokeWidth = 1.0;
@@ -210,6 +235,7 @@ class RecordingMembranePainter extends CustomPainter {
   final List<double> coefficients;
   final List<double> velocity;
   final List<List<double>> history;
+  final List<RecordingMembraneImpactSnapshot> impacts;
   final double level;
   final double flux;
   final double novelty;
@@ -276,81 +302,47 @@ class RecordingMembranePainter extends CustomPainter {
         canvas.drawPath(path, glowPaint);
       }
 
-      final bodyGradient = RadialGradient(
-        center: Alignment(
-          0.14 * math.cos(colorPhase),
-          0.14 * math.sin(colorPhase),
-        ),
-        radius: 0.96,
-        colors: [
-          _tone(fillColor, lightnessFactor: 0.40).withValues(alpha: 0.96),
-          _tone(fillColor, lightnessFactor: 0.82).withValues(alpha: 0.98),
-          _tone(
-            fillColor,
-            hueShift: -10,
-            lightnessDelta: 0.10,
-          ).withValues(alpha: 1),
-        ],
-        stops: const [0, 0.66, 1],
-      );
       canvas.drawPath(
         path,
         Paint()
           ..style = PaintingStyle.fill
-          ..shader = bodyGradient.createShader(shaderBounds)
+          ..color = _tone(
+            fillColor,
+            saturationFactor: 0.96,
+            lightnessFactor: 0.42,
+          ).withValues(alpha: 0.99)
           ..isAntiAlias = true,
       );
 
-      if (activity > 0.01) {
+      if (activity > 0.01 || impacts.isNotEmpty) {
         canvas.save();
         canvas.clipPath(path);
-        final disturbancePaint =
-            Paint()
-              ..style = PaintingStyle.fill
-              ..blendMode = BlendMode.screen
-              ..shader = SweepGradient(
-                colors: [
-                  Colors.transparent,
-                  _tone(
-                    fillColor,
-                    hueShift: -18,
-                    lightnessDelta: 0.18,
-                  ).withValues(alpha: 0.12 + 0.18 * activity),
-                  Colors.transparent,
-                  _tone(
-                    fillColor,
-                    hueShift: 34,
-                    lightnessDelta: 0.12,
-                  ).withValues(alpha: 0.10 + 0.20 * safeNovelty),
-                  Colors.transparent,
-                ],
-                transform: GradientRotation(colorPhase),
-              ).createShader(shaderBounds)
-              ..isAntiAlias = true;
-        canvas.drawRect(shaderBounds, disturbancePaint);
+        _paintImpacts(canvas: canvas, center: center, baseRadius: baseRadius);
 
-        final innerBandPaint =
-            Paint()
-              ..style = PaintingStyle.stroke
-              ..strokeWidth = 2.2
-              ..strokeJoin = StrokeJoin.round
-              ..strokeCap = StrokeCap.round
-              ..blendMode = BlendMode.screen
-              ..shader = SweepGradient(
-                colors: palette.innerColors,
-                stops: palette.stops,
-                transform: GradientRotation(colorPhase),
-              ).createShader(shaderBounds)
-              ..isAntiAlias = true;
-        canvas.drawPath(path, innerBandPaint);
-        _paintHistory(
-          canvas: canvas,
-          center: center,
-          shaderBounds: shaderBounds,
-          palette: palette,
-          activity: activity,
-          currentBaseRadius: baseRadius,
-        );
+        if (activity > 0.01) {
+          final innerBandPaint =
+              Paint()
+                ..style = PaintingStyle.stroke
+                ..strokeWidth = 1.35
+                ..strokeJoin = StrokeJoin.round
+                ..strokeCap = StrokeCap.round
+                ..blendMode = BlendMode.screen
+                ..shader = SweepGradient(
+                  colors: palette.innerColors,
+                  stops: palette.stops,
+                  transform: GradientRotation(colorPhase),
+                ).createShader(shaderBounds)
+                ..isAntiAlias = true;
+          canvas.drawPath(path, innerBandPaint);
+          _paintHistory(
+            canvas: canvas,
+            center: center,
+            shaderBounds: shaderBounds,
+            palette: palette,
+            activity: impacts.isEmpty ? activity : activity * 0.40,
+            currentBaseRadius: baseRadius,
+          );
+        }
         canvas.restore();
       }
 
@@ -367,10 +359,374 @@ class RecordingMembranePainter extends CustomPainter {
             ).createShader(shaderBounds)
             ..isAntiAlias = true;
       canvas.drawPath(path, rimPaint);
+      _paintImpactRim(
+        canvas: canvas,
+        center: center,
+        radii: radii,
+        baseRadius: baseRadius,
+      );
     } finally {
       canvas.restore();
     }
   }
+
+  void _paintImpacts({
+    required Canvas canvas,
+    required Offset center,
+    required double baseRadius,
+  }) {
+    final visible = _renderedImpacts(center, baseRadius);
+    if (visible.isEmpty) return;
+    final secondary = visible.reduce(
+      (first, second) => first.envelope >= second.envelope ? first : second,
+    );
+
+    for (final impact in visible) {
+      _paintImpactDimple(canvas, impact);
+
+      final troughRadius = impact.frontRadius - 1.20;
+      if (troughRadius > 0.35 && impact.envelope > 0.001) {
+        _paintImpactOval(
+          canvas: canvas,
+          impact: impact,
+          radius: troughRadius,
+          color: _tone(
+            fillColor,
+            hueShift: -8,
+            saturationFactor: 0.78,
+            lightnessFactor: 0.28,
+          ),
+          alpha: 0.18 * impact.envelope,
+          strokeWidth: 1.42,
+          blendMode: BlendMode.multiply,
+          angularFloor: 0.06,
+        );
+      }
+
+      if (identical(impact, secondary) &&
+          impact.frontRadius > 2.95 &&
+          impact.envelope > 0.001) {
+        _paintImpactOval(
+          canvas: canvas,
+          impact: impact,
+          radius: impact.frontRadius - 2.45,
+          color: _crestColor,
+          alpha: 0.06 * impact.envelope,
+          strokeWidth: 0.50,
+          blendMode: BlendMode.screen,
+          angularFloor: 0.00,
+          chromatic: true,
+        );
+      }
+
+      if (impact.envelope <= 0.001) continue;
+      _paintImpactOval(
+        canvas: canvas,
+        impact: impact,
+        radius: impact.frontRadius,
+        color: _crestColor,
+        alpha: 0.18 * impact.envelope,
+        strokeWidth: 1.74,
+        blendMode: BlendMode.screen,
+        blurSigma: 0.32,
+        angularFloor: 0.04,
+        chromatic: true,
+      );
+      _paintImpactOval(
+        canvas: canvas,
+        impact: impact,
+        radius: impact.frontRadius,
+        color: _crestColor,
+        alpha: 0.64 * impact.envelope,
+        strokeWidth: 0.84,
+        blendMode: BlendMode.screen,
+        angularFloor: 0.06,
+        chromatic: true,
+      );
+    }
+  }
+
+  void _paintImpactDimple(Canvas canvas, _RenderedImpact impact) {
+    final life = math.exp(-impact.snapshot.age / 0.12);
+    if (life < 0.015) return;
+    final radius = 0.92 + 0.56 * impact.snapshot.strength;
+    final bounds = Rect.fromCenter(
+      center: Offset.zero,
+      width: radius * 2.70,
+      height: radius * 1.52,
+    );
+    canvas.save();
+    canvas.translate(impact.origin.dx, impact.origin.dy);
+    canvas.rotate(impact.snapshot.angle);
+    canvas.drawOval(
+      bounds,
+      Paint()
+        ..style = PaintingStyle.fill
+        ..color = _tone(
+          fillColor,
+          saturationFactor: 0.72,
+          lightnessFactor: 0.24,
+        ).withValues(alpha: 0.06 * impact.snapshot.strength * life)
+        ..blendMode = BlendMode.multiply
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 0.32)
+        ..isAntiAlias = true,
+    );
+    canvas.drawArc(
+      bounds,
+      -math.pi * 0.42,
+      math.pi * 0.84,
+      false,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 0.48
+        ..strokeCap = StrokeCap.round
+        ..color = _crestColor.withValues(
+          alpha: 0.16 * impact.snapshot.strength * life,
+        )
+        ..blendMode = BlendMode.screen
+        ..isAntiAlias = true,
+    );
+    canvas.restore();
+  }
+
+  void _paintImpactOval({
+    required Canvas canvas,
+    required _RenderedImpact impact,
+    required double radius,
+    required Color color,
+    required double alpha,
+    required double strokeWidth,
+    required BlendMode blendMode,
+    required double angularFloor,
+    bool chromatic = false,
+    double blurSigma = 0,
+  }) {
+    if (radius <= 0 || alpha <= 0.001) return;
+    final major = radius * (1 + impact.eccentricity);
+    final minor = radius * (1 - 0.55 * impact.eccentricity);
+    final bounds = Rect.fromCenter(
+      center: Offset.zero,
+      width: 2 * major,
+      height: 2 * minor,
+    );
+    final angular = _impactAngularColors(
+      impact: impact,
+      color: color,
+      alpha: alpha,
+      floor: angularFloor,
+      chromatic: chromatic,
+    );
+    final paint =
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = strokeWidth
+          ..strokeCap = StrokeCap.round
+          ..blendMode = blendMode
+          ..shader = SweepGradient(
+            colors: angular.colors,
+            stops: angular.stops,
+          ).createShader(bounds)
+          ..isAntiAlias = true;
+    if (blurSigma > 0) {
+      paint.maskFilter = MaskFilter.blur(BlurStyle.normal, blurSigma);
+    }
+    canvas.save();
+    canvas.translate(impact.origin.dx, impact.origin.dy);
+    canvas.rotate(impact.snapshot.angle);
+    canvas.drawPath(_impactWavePath(impact, radius), paint);
+    canvas.restore();
+  }
+
+  Path _impactWavePath(_RenderedImpact impact, double radius) {
+    const samples = 48;
+    final phase = impact.snapshot.colorPhase - impact.snapshot.angle;
+    final warpAmount = 0.045 + 0.045 * impact.snapshot.highBandShare;
+    final major = radius * (1 + impact.eccentricity);
+    final minor = radius * (1 - 0.55 * impact.eccentricity);
+    final path = Path();
+    for (var sample = 0; sample < samples; sample++) {
+      final angle = sample * 2 * math.pi / samples;
+      final warp =
+          1 +
+          warpAmount *
+              (0.68 * math.sin(2 * angle + phase) +
+                  0.32 * math.sin(3 * angle - 0.55 * phase));
+      final point = Offset(
+        math.cos(angle) * major * warp,
+        math.sin(angle) * minor * warp,
+      );
+      if (sample == 0) {
+        path.moveTo(point.dx, point.dy);
+      } else {
+        path.lineTo(point.dx, point.dy);
+      }
+    }
+    path.close();
+    return path;
+  }
+
+  _AngularPalette _impactAngularColors({
+    required _RenderedImpact impact,
+    required Color color,
+    required double alpha,
+    required double floor,
+    required bool chromatic,
+  }) {
+    const stopCount = 16;
+    final phase =
+        impact.snapshot.colorPhase -
+        impact.snapshot.angle +
+        impact.snapshot.highBandShare * math.pi * 0.45;
+    final colors = <Color>[];
+    final stops = <double>[];
+    for (var stop = 0; stop <= stopCount; stop++) {
+      final angle = stop * 2 * math.pi / stopCount;
+      final broadWave =
+          0.45 + 0.42 * math.cos(angle) + 0.13 * math.cos(2 * angle + phase);
+      final modulation = (floor + (1 - floor) * broadWave).clamp(floor, 1.0);
+      final chroma =
+          chromatic
+              ? Color.lerp(
+                Color.lerp(
+                  _tone(
+                    fillColor,
+                    hueShift: -28,
+                    saturationFactor: 1.08,
+                    lightnessDelta: 0.20,
+                  ),
+                  strokeColor,
+                  0.40,
+                ),
+                color,
+                0.5 + 0.5 * math.cos(angle + phase),
+              )!
+              : color;
+      colors.add(chroma.withValues(alpha: _unit(alpha * modulation)));
+      stops.add(stop / stopCount);
+    }
+    return _AngularPalette(
+      colors: List<Color>.unmodifiable(colors),
+      stops: List<double>.unmodifiable(stops),
+    );
+  }
+
+  void _paintImpactRim({
+    required Canvas canvas,
+    required Offset center,
+    required List<double> radii,
+    required double baseRadius,
+  }) {
+    final visible = _renderedImpacts(center, baseRadius);
+    if (visible.isEmpty) return;
+    final points = List<Offset>.generate(contourSampleCount, (sample) {
+      final angle = -math.pi / 2 + sample * 2 * math.pi / contourSampleCount;
+      return center + Offset(math.cos(angle), math.sin(angle)) * radii[sample];
+    }, growable: false);
+    final hits = List<double>.generate(contourSampleCount, (sample) {
+      final point = points[sample];
+      var maximum = 0.0;
+      for (final impact in visible) {
+        if (impact.envelope <= 0.001) continue;
+        final delta = point - impact.origin;
+        final cosine = math.cos(impact.snapshot.angle);
+        final sine = math.sin(impact.snapshot.angle);
+        final u = delta.dx * cosine + delta.dy * sine;
+        final v = -delta.dx * sine + delta.dy * cosine;
+        final ellipticalRadius = math.sqrt(
+          math.pow(u / (1 + impact.eccentricity), 2) +
+              math.pow(v / (1 - 0.55 * impact.eccentricity), 2),
+        );
+        final distance = (ellipticalRadius - impact.frontRadius) / 0.68;
+        maximum = math.max(
+          maximum,
+          impact.envelope * math.exp(-0.5 * distance * distance),
+        );
+      }
+      return maximum;
+    }, growable: false);
+
+    const stopCount = 24;
+    final rimColor = Color.lerp(_crestColor, strokeColor, 0.62)!;
+    final stops = <double>[];
+    final glowColors = <Color>[];
+    final coreColors = <Color>[];
+    for (var stop = 0; stop <= stopCount; stop++) {
+      final sample = stop % stopCount * contourSampleCount ~/ stopCount;
+      final normalized = _unit(hits[sample] / 0.48);
+      final intensity = normalized * normalized * (3 - 2 * normalized);
+      stops.add(stop / stopCount);
+      glowColors.add(rimColor.withValues(alpha: 0.13 * intensity));
+      coreColors.add(rimColor.withValues(alpha: 0.27 * intensity));
+    }
+    final path = _pathForRadii(radii, center);
+    final bounds = Rect.fromCircle(center: center, radius: maxCenterRadius);
+    final rotation = GradientRotation(-math.pi / 2);
+    canvas.drawPath(
+      path,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.82
+        ..strokeCap = StrokeCap.round
+        ..strokeJoin = StrokeJoin.round
+        ..shader = SweepGradient(
+          colors: glowColors,
+          stops: stops,
+          transform: rotation,
+        ).createShader(bounds)
+        ..blendMode = BlendMode.screen
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 0.30)
+        ..isAntiAlias = true,
+    );
+    canvas.drawPath(
+      path,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 0.82
+        ..strokeCap = StrokeCap.round
+        ..strokeJoin = StrokeJoin.round
+        ..shader = SweepGradient(
+          colors: coreColors,
+          stops: stops,
+          transform: rotation,
+        ).createShader(bounds)
+        ..blendMode = BlendMode.screen
+        ..isAntiAlias = true,
+    );
+  }
+
+  List<_RenderedImpact> _renderedImpacts(Offset center, double baseRadius) {
+    final alive = impacts.where((impact) => impact.isAlive).toList();
+    if (alive.length > 2) alive.removeRange(0, alive.length - 2);
+    alive.sort((first, second) => second.age.compareTo(first.age));
+    return List<_RenderedImpact>.unmodifiable(
+      alive.map((snapshot) {
+        return _RenderedImpact(
+          snapshot: snapshot,
+          origin:
+              center +
+              Offset(snapshot.origin.x, snapshot.origin.y) * baseRadius,
+          frontRadius: snapshot.frontRadiusFor(baseRadius),
+          eccentricity: (0.06 + 0.30 * snapshot.eccentricity).clamp(0.08, 0.23),
+          envelope: math.min(
+            1,
+            snapshot.fade * math.pow(math.max(snapshot.strength, 1e-6), -0.24),
+          ),
+        );
+      }),
+    );
+  }
+
+  Color get _crestColor =>
+      Color.lerp(
+        _tone(
+          fillColor,
+          hueShift: 24,
+          saturationFactor: 1.05,
+          lightnessDelta: 0.24,
+        ),
+        strokeColor,
+        0.50,
+      )!;
 
   void _paintHistory({
     required Canvas canvas,
@@ -380,11 +736,11 @@ class RecordingMembranePainter extends CustomPainter {
     required double activity,
     required double currentBaseRadius,
   }) {
-    const historyIndices = [0, 1, 3, 5];
-    const insets = [0.65, 1.30, 2.05, 2.80];
-    const scales = [0.86, 0.68, 0.50, 0.33];
-    const widths = [0.62, 0.54, 0.46, 0.40];
-    const alphas = [0.24, 0.17, 0.11, 0.07];
+    const historyIndices = [3];
+    const insets = [1.60];
+    const scales = [0.52];
+    const widths = [0.38];
+    const alphas = [0.055];
 
     for (var layer = historyIndices.length - 1; layer >= 0; layer--) {
       final index = historyIndices[layer];
@@ -500,11 +856,35 @@ class RecordingMembranePainter extends CustomPainter {
         colorPhase != oldDelegate.colorPhase ||
         !_sameList(coefficients, oldDelegate.coefficients) ||
         !_sameList(velocity, oldDelegate.velocity) ||
-        !_sameHistory(history, oldDelegate.history);
+        !_sameHistory(history, oldDelegate.history) ||
+        !_sameImpacts(impacts, oldDelegate.impacts);
   }
 
   @override
   bool? hitTest(Offset position) => false;
+}
+
+final class _RenderedImpact {
+  const _RenderedImpact({
+    required this.snapshot,
+    required this.origin,
+    required this.frontRadius,
+    required this.eccentricity,
+    required this.envelope,
+  });
+
+  final RecordingMembraneImpactSnapshot snapshot;
+  final Offset origin;
+  final double frontRadius;
+  final double eccentricity;
+  final double envelope;
+}
+
+final class _AngularPalette {
+  const _AngularPalette({required this.colors, required this.stops});
+
+  final List<Color> colors;
+  final List<double> stops;
 }
 
 final class _MembranePalette {
@@ -550,6 +930,30 @@ bool _sameHistory(List<List<double>> first, List<List<double>> second) {
   if (first.length != second.length) return false;
   for (var index = 0; index < first.length; index++) {
     if (!_sameList(first[index], second[index])) return false;
+  }
+  return true;
+}
+
+bool _sameImpacts(
+  List<RecordingMembraneImpactSnapshot> first,
+  List<RecordingMembraneImpactSnapshot> second,
+) {
+  if (first.length != second.length) return false;
+  for (var index = 0; index < first.length; index++) {
+    final a = first[index];
+    final b = second[index];
+    if (a.id != b.id ||
+        a.age != b.age ||
+        a.strength != b.strength ||
+        a.angle != b.angle ||
+        a.origin.x != b.origin.x ||
+        a.origin.y != b.origin.y ||
+        a.eccentricity != b.eccentricity ||
+        a.colorPhase != b.colorPhase ||
+        a.highBandShare != b.highBandShare ||
+        a.lifetime != b.lifetime) {
+      return false;
+    }
   }
   return true;
 }

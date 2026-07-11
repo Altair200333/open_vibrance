@@ -5,6 +5,7 @@ import 'dart:typed_data';
 
 import 'package:open_vibrance/services/audio_spectrum_analyzer.dart';
 import 'package:open_vibrance/services/recording_membrane.dart';
+import 'package:open_vibrance/services/recording_membrane_impact.dart';
 
 Future<void> main(List<String> arguments) async {
   final options = _LabOptions.parse(arguments);
@@ -45,10 +46,23 @@ Future<void> main(List<String> arguments) async {
   renderInput.writeAsStringSync(
     const JsonEncoder.withIndent('  ').convert(renderFrames),
   );
+  final impactPayload = _impactRenderPayload(simulations);
+  final impactInput = File(
+    '${output.path}${Platform.pathSeparator}impact_frames.json',
+  );
+  impactInput.writeAsStringSync(
+    const JsonEncoder.withIndent('  ').convert(impactPayload),
+  );
+  final impactEventCount = (impactPayload['events'] as List).length;
+  if (impactEventCount < 3) {
+    stderr.writeln(
+      'Only $impactEventCount eligible emitted impacts were found; the impact grid will contain empty rows.',
+    );
+  }
 
   var pngRendered = false;
   if (options.renderPng) {
-    pngRendered = await _renderExactPng(output, renderInput);
+    pngRendered = await _renderExactPngs(output, renderInput, impactInput);
   }
 
   stdout.writeln('');
@@ -62,6 +76,9 @@ Future<void> main(List<String> arguments) async {
   if (pngRendered) {
     stdout.writeln(
       '  exact PNG: ${File('${output.path}${Platform.pathSeparator}contact-sheet.png').absolute.path}',
+    );
+    stdout.writeln(
+      '  impact PNG: ${File('${output.path}${Platform.pathSeparator}impact-grid.png').absolute.path}',
     );
   }
 }
@@ -328,6 +345,8 @@ final class _Simulation {
     required this.frames,
     required this.baselineMetrics,
     required this.candidateMetrics,
+    required this.impactEmissions,
+    required this.impactMetrics,
   });
 
   final _WavAudio wav;
@@ -335,7 +354,35 @@ final class _Simulation {
   final List<_SimFrame> frames;
   final Map<String, Object> baselineMetrics;
   final Map<String, Object> candidateMetrics;
+  final List<_ImpactEmission> impactEmissions;
+  final Map<String, Object> impactMetrics;
 }
+
+final class _ImpactEmission {
+  const _ImpactEmission({
+    required this.id,
+    required this.time,
+    required this.strength,
+  });
+
+  final int id;
+  final double time;
+  final double strength;
+}
+
+final class _SelectedImpact {
+  const _SelectedImpact({
+    required this.tier,
+    required this.simulation,
+    required this.emission,
+  });
+
+  final String tier;
+  final _Simulation simulation;
+  final _ImpactEmission emission;
+}
+
+typedef _ImpactCandidate = ({_Simulation simulation, _ImpactEmission emission});
 
 final class _ShapeState {
   const _ShapeState({
@@ -359,6 +406,9 @@ final class _SimFrame {
     required this.candidateTarget,
     required this.baseline,
     required this.candidate,
+    required this.impacts,
+    required this.impactDrive,
+    required this.impactShapeKick,
   });
 
   final double time;
@@ -369,6 +419,9 @@ final class _SimFrame {
   final RecordingMembraneTarget candidateTarget;
   final _ShapeState baseline;
   final _ShapeState candidate;
+  final List<RecordingMembraneImpactSnapshot> impacts;
+  final double impactDrive;
+  final double impactShapeKick;
 }
 
 _Simulation _simulate(_WavAudio wav, {required int fps}) {
@@ -388,6 +441,8 @@ _Simulation _simulate(_WavAudio wav, {required int fps}) {
 
   final zeroBands = List<double>.filled(AudioSpectrumFrame.bandCount, 0);
   final mapper = RecordingMembraneMapper();
+  final impactController = RecordingMembraneImpactController();
+  final impactEmissions = <_ImpactEmission>[];
   var candidateTarget = mapper.map(
     level: 0,
     bands: zeroBands,
@@ -419,6 +474,7 @@ _Simulation _simulate(_WavAudio wav, {required int fps}) {
     if (dt > 1e-12) {
       baselineDynamics.advance(dt);
       candidateDynamics.advance(dt);
+      impactController.advance(dt);
       currentTime = targetTime;
     }
   }
@@ -440,6 +496,16 @@ _Simulation _simulate(_WavAudio wav, {required int fps}) {
         flux: event.flux,
         elapsedSeconds: eventDt,
       );
+      final emittedImpact = impactController.processTarget(candidateTarget);
+      if (emittedImpact != null) {
+        impactEmissions.add(
+          _ImpactEmission(
+            id: emittedImpact.id,
+            time: eventTime,
+            strength: emittedImpact.strength,
+          ),
+        );
+      }
       candidateDynamics.retarget(candidateTarget.coefficients);
       baselineDynamics.retarget(
         RecordingMembraneModel.coefficientsFor(
@@ -465,6 +531,7 @@ _Simulation _simulate(_WavAudio wav, {required int fps}) {
         flux: 0,
         spectrumMix: 0,
       );
+      impactController.reset();
       candidateDynamics.retarget(candidateTarget.coefficients);
       baselineDynamics.retarget(initial);
       lastLevel = 0;
@@ -498,6 +565,9 @@ _Simulation _simulate(_WavAudio wav, {required int fps}) {
             candidateCoefficients,
           ),
         ),
+        impacts: impactController.impacts,
+        impactDrive: impactController.lastDrive,
+        impactShapeKick: impactController.lastShapeKick,
       ),
     );
   }
@@ -508,6 +578,12 @@ _Simulation _simulate(_WavAudio wav, {required int fps}) {
     frames: List<_SimFrame>.unmodifiable(frames),
     baselineMetrics: _metrics(frames, (frame) => frame.baseline),
     candidateMetrics: _metrics(frames, (frame) => frame.candidate),
+    impactEmissions: List<_ImpactEmission>.unmodifiable(impactEmissions),
+    impactMetrics: _impactMetrics(
+      frames,
+      impactEmissions,
+      durationSeconds: wav.durationSeconds,
+    ),
   );
 }
 
@@ -620,6 +696,63 @@ Map<String, Object> _metrics(
   };
 }
 
+Map<String, Object> _impactMetrics(
+  List<_SimFrame> frames,
+  List<_ImpactEmission> emissions, {
+  required double durationSeconds,
+}) {
+  final strengths = emissions
+      .map((emission) => emission.strength)
+      .toList(growable: false);
+  final speechFrames = frames
+      .where((frame) => frame.activityDb >= -62)
+      .toList(growable: false);
+  final drives = speechFrames
+      .map((frame) => frame.impactDrive)
+      .toList(growable: false);
+  final shapeKicks = speechFrames
+      .map((frame) => frame.impactShapeKick)
+      .toList(growable: false);
+  final activeFrames = frames.where((frame) => frame.impacts.isNotEmpty).length;
+  var maximumConcurrent = 0;
+  for (final frame in frames) {
+    maximumConcurrent = math.max(maximumConcurrent, frame.impacts.length);
+  }
+  final gaps = <double>[];
+  for (var index = 1; index < emissions.length; index++) {
+    gaps.add(emissions[index].time - emissions[index - 1].time);
+  }
+  return {
+    'emitted_count': emissions.length,
+    'emitted_per_second':
+        durationSeconds > 0 ? emissions.length / durationSeconds : 0,
+    'gap_median_seconds': gaps.isEmpty ? 0 : _quantile(gaps, 0.50),
+    'gap_p90_seconds': gaps.isEmpty ? 0 : _quantile(gaps, 0.90),
+    'gap_max_seconds': gaps.isEmpty ? 0 : gaps.reduce(math.max),
+    'strength_min': strengths.isEmpty ? 0 : strengths.reduce(math.min),
+    'strength_median': strengths.isEmpty ? 0 : _quantile(strengths, 0.5),
+    'strength_max': strengths.isEmpty ? 0 : strengths.reduce(math.max),
+    'active_frame_share': frames.isEmpty ? 0 : activeFrames / frames.length,
+    'max_concurrent': maximumConcurrent,
+    'drive_p50': drives.isEmpty ? 0 : _quantile(drives, 0.50),
+    'drive_p75': drives.isEmpty ? 0 : _quantile(drives, 0.75),
+    'drive_p90': drives.isEmpty ? 0 : _quantile(drives, 0.90),
+    'drive_above_trigger_share':
+        drives.isEmpty
+            ? 0
+            : drives
+                    .where(
+                      (drive) =>
+                          drive >=
+                          RecordingMembraneImpactController.triggerDrive,
+                    )
+                    .length /
+                drives.length,
+    'shape_kick_p50': shapeKicks.isEmpty ? 0 : _quantile(shapeKicks, 0.50),
+    'shape_kick_p90': shapeKicks.isEmpty ? 0 : _quantile(shapeKicks, 0.90),
+  };
+}
+
 Future<void> _writeRecordingArtifacts(
   Directory root,
   _Simulation simulation,
@@ -643,6 +776,9 @@ Future<void> _writeRecordingArtifacts(
         'flux': _rounded(frame.flux),
         'baseline': frame.baseline.radii.map(_rounded).toList(),
         'candidate': frame.candidate.radii.map(_rounded).toList(),
+        'impacts': frame.impacts.map(_impactJson).toList(growable: false),
+        'impact_drive': _rounded(frame.impactDrive),
+        'impact_shape_kick': _rounded(frame.impactShapeKick),
       }),
     );
   }
@@ -654,6 +790,15 @@ Future<void> _writeRecordingArtifacts(
     'fps': simulation.fps,
     'baseline_metrics': simulation.baselineMetrics,
     'candidate_metrics': simulation.candidateMetrics,
+    'impact_metrics': simulation.impactMetrics,
+    'impact_emissions': [
+      for (final emission in simulation.impactEmissions)
+        {
+          'id': emission.id,
+          'time': _rounded(emission.time),
+          'strength': _rounded(emission.strength),
+        },
+    ],
   };
   File(
     '${directory.path}${Platform.pathSeparator}trace.json',
@@ -667,7 +812,7 @@ Map<String, Object> _buildSummary(
   List<_Simulation> simulations,
   _LabOptions options,
 ) => {
-  'schema': 1,
+  'schema': 2,
   'generated_at': DateTime.now().toUtc().toIso8601String(),
   'fps': options.fps,
   'recordings': [
@@ -677,6 +822,7 @@ Map<String, Object> _buildSummary(
         'duration_seconds': simulation.wav.durationSeconds,
         'baseline': simulation.baselineMetrics,
         'candidate': simulation.candidateMetrics,
+        'impacts': simulation.impactMetrics,
       },
   ],
 };
@@ -707,6 +853,18 @@ String _summaryMarkdown(List<_Simulation> simulations, _LabOptions options) {
         '| $name | ${entry.$1} | ${_metric(metrics, 'range_median_px')} / ${_metric(metrics, 'range_p90_px')} | ${_metric(metrics, 'motion_median_px')} / ${_metric(metrics, 'motion_p90_px')} | ${_metric(metrics, 'adjacent_similarity_p05')} | ${_metric(metrics, 'acceleration_p95_px')} | ${_metric(metrics, 'radial_jump_p99_px')} | ${_metric(metrics, 'prototype_similarity_mean')} | ${_metric(metrics, 'orientation_concentration')} | ${_percentMetric(metrics, 'four_plus_peak_share')} | ${_percentMetric(metrics, 'modes_4_5_share_mean')} | ${_metric(metrics, 'range_level_correlation')} |',
       );
     }
+  }
+  buffer
+    ..writeln()
+    ..writeln(
+      '| Recording | Impacts | Rate/s | Gap med / P90 | Strength min / med / max | Active frames | Max concurrent | Drive P50 / P90 | Above trigger |',
+    )
+    ..writeln('|---|---:|---:|---:|---:|---:|---:|---:|---:|');
+  for (final simulation in simulations) {
+    final metrics = simulation.impactMetrics;
+    buffer.writeln(
+      '| ${_stem(simulation.wav.file.path)} | ${metrics['emitted_count']} | ${_metric(metrics, 'emitted_per_second')} | ${_metric(metrics, 'gap_median_seconds')} / ${_metric(metrics, 'gap_p90_seconds')} | ${_metric(metrics, 'strength_min')} / ${_metric(metrics, 'strength_median')} / ${_metric(metrics, 'strength_max')} | ${_percentMetric(metrics, 'active_frame_share')} | ${metrics['max_concurrent']} | ${_metric(metrics, 'drive_p50')} / ${_metric(metrics, 'drive_p90')} | ${_percentMetric(metrics, 'drive_above_trigger_share')} |',
+    );
   }
   buffer
     ..writeln()
@@ -845,76 +1003,223 @@ String _svgPath(
   return '${buffer}Z';
 }
 
+Map<String, Object> _impactJson(RecordingMembraneImpactSnapshot impact) => {
+  'id': impact.id,
+  'age': impact.age,
+  'strength': impact.strength,
+  'angle': impact.angle,
+  'origin_x': impact.origin.x,
+  'origin_y': impact.origin.y,
+  'eccentricity': impact.eccentricity,
+  'color_phase': impact.colorPhase,
+  'high_band_share': impact.highBandShare,
+  'lifetime': impact.lifetime,
+};
+
+List<List<double>> _historyForFrame(_Simulation simulation, int frameIndex) => [
+  for (final secondsAgo in const [
+    0.0,
+    0.048,
+    0.096,
+    0.144,
+    0.192,
+    0.240,
+    0.288,
+  ])
+    simulation
+        .frames[math.max(0, frameIndex - (secondsAgo * simulation.fps).round())]
+        .candidate
+        .coefficients,
+];
+
+Map<String, Object> _painterSnapshotJson(
+  _Simulation simulation,
+  int frameIndex,
+) {
+  final frame = simulation.frames[frameIndex];
+  return {
+    'recording': _stem(simulation.wav.file.path),
+    'time': frame.time,
+    'level': frame.level,
+    'flux': frame.flux,
+    'novelty': frame.candidateTarget.novelty,
+    'color_phase': frame.candidateTarget.colorPhase,
+    'baseline_coefficients': frame.baseline.coefficients,
+    'candidate_coefficients': frame.candidate.coefficients,
+    'candidate_velocity': frame.candidate.velocity,
+    'candidate_history': _historyForFrame(simulation, frameIndex),
+    'impacts': frame.impacts.map(_impactJson).toList(growable: false),
+  };
+}
+
 List<Map<String, Object>> _combinedRenderFrames(List<_Simulation> simulations) {
   final output = <Map<String, Object>>[];
   for (final simulation in simulations) {
     final representatives = _representativeFrames(simulation, count: 8);
     for (final frame in representatives) {
-      final frameIndex = simulation.frames.indexOf(frame);
-      final history = <List<double>>[];
-      for (final secondsAgo in const [
-        0.0,
-        0.048,
-        0.096,
-        0.144,
-        0.192,
-        0.240,
-        0.288,
-      ]) {
-        final historyIndex = math.max(
-          0,
-          frameIndex - (secondsAgo * simulation.fps).round(),
-        );
-        history.add(simulation.frames[historyIndex].candidate.coefficients);
-      }
-      output.add({
-        'recording': _stem(simulation.wav.file.path),
-        'time': frame.time,
-        'level': frame.level,
-        'flux': frame.flux,
-        'novelty': frame.candidateTarget.novelty,
-        'color_phase': frame.candidateTarget.colorPhase,
-        'baseline_coefficients': frame.baseline.coefficients,
-        'candidate_coefficients': frame.candidate.coefficients,
-        'candidate_velocity': frame.candidate.velocity,
-        'candidate_history': history,
-      });
+      output.add(
+        _painterSnapshotJson(simulation, simulation.frames.indexOf(frame)),
+      );
     }
   }
   return output;
 }
 
-Future<bool> _renderExactPng(Directory output, File input) async {
-  final png =
-      File('${output.path}${Platform.pathSeparator}contact-sheet.png').absolute;
-  if (png.existsSync()) png.deleteSync();
+const _impactOffsetsMs = [-96, -48, 0, 48, 96, 144, 240, 384];
+
+List<_SelectedImpact> _selectImpactEvents(List<_Simulation> simulations) {
+  List<_ImpactCandidate> candidates({required bool requireFullWindow}) => [
+    for (final simulation in simulations)
+      for (final emission in simulation.impactEmissions)
+        if (!requireFullWindow ||
+            (emission.time >= 0.096 &&
+                emission.time + 0.384 <= simulation.wav.durationSeconds))
+          (simulation: simulation, emission: emission),
+  ];
+
+  var pool = candidates(requireFullWindow: true);
+  if (pool.length < 3) pool = candidates(requireFullWindow: false);
+  pool.sort((first, second) {
+    final strengthOrder = first.emission.strength.compareTo(
+      second.emission.strength,
+    );
+    if (strengthOrder != 0) return strengthOrder;
+    final pathOrder = first.simulation.wav.file.path.compareTo(
+      second.simulation.wav.file.path,
+    );
+    if (pathOrder != 0) return pathOrder;
+    final timeOrder = first.emission.time.compareTo(second.emission.time);
+    return timeOrder != 0
+        ? timeOrder
+        : first.emission.id.compareTo(second.emission.id);
+  });
+  if (pool.length < 3) return const [];
+
+  final boundaries = [
+    0,
+    (pool.length / 3).ceil(),
+    (2 * pool.length / 3).ceil(),
+    pool.length,
+  ];
+  final tiers = ['low', 'medium', 'high'];
+  final usedRecordings = <String>{};
+  final selected = <_SelectedImpact>[];
+  for (var tierIndex = 0; tierIndex < tiers.length; tierIndex++) {
+    final group = pool.sublist(
+      boundaries[tierIndex],
+      boundaries[tierIndex + 1],
+    );
+    final targetStrength = _quantile(
+      group.map((item) => item.emission.strength).toList(growable: false),
+      0.5,
+    );
+    group.sort((first, second) {
+      final firstUsed = usedRecordings.contains(first.simulation.wav.file.path);
+      final secondUsed = usedRecordings.contains(
+        second.simulation.wav.file.path,
+      );
+      if (firstUsed != secondUsed) return firstUsed ? 1 : -1;
+      final distanceOrder = (first.emission.strength - targetStrength)
+          .abs()
+          .compareTo((second.emission.strength - targetStrength).abs());
+      if (distanceOrder != 0) return distanceOrder;
+      final pathOrder = first.simulation.wav.file.path.compareTo(
+        second.simulation.wav.file.path,
+      );
+      if (pathOrder != 0) return pathOrder;
+      return first.emission.time.compareTo(second.emission.time);
+    });
+    final choice = group.first;
+    usedRecordings.add(choice.simulation.wav.file.path);
+    selected.add(
+      _SelectedImpact(
+        tier: tiers[tierIndex],
+        simulation: choice.simulation,
+        emission: choice.emission,
+      ),
+    );
+  }
+  return List<_SelectedImpact>.unmodifiable(selected);
+}
+
+Map<String, Object> _impactRenderPayload(List<_Simulation> simulations) {
+  final selected = _selectImpactEvents(simulations);
+  return {
+    'schema': 1,
+    'offsets_ms': _impactOffsetsMs,
+    'events': [
+      for (final event in selected)
+        {
+          'tier': event.tier,
+          'recording': _stem(event.simulation.wav.file.path),
+          'impact_id': event.emission.id,
+          'emission_time': event.emission.time,
+          'strength': event.emission.strength,
+          'snapshots': [
+            for (final requestedOffsetMs in _impactOffsetsMs)
+              () {
+                final targetTime =
+                    event.emission.time + requestedOffsetMs / 1000;
+                final frameIndex = (targetTime * event.simulation.fps)
+                    .ceil()
+                    .clamp(0, event.simulation.frames.length - 1);
+                final frame = event.simulation.frames[frameIndex];
+                return {
+                  'requested_offset_ms': requestedOffsetMs,
+                  'actual_offset_ms':
+                      ((frame.time - event.emission.time) * 1000).round(),
+                  ..._painterSnapshotJson(event.simulation, frameIndex),
+                };
+              }(),
+          ],
+        },
+    ],
+  };
+}
+
+Future<bool> _renderExactPngs(
+  Directory output,
+  File input,
+  File impactInput,
+) async {
+  final pngs = [
+    File('${output.path}${Platform.pathSeparator}contact-sheet.png').absolute,
+    File('${output.path}${Platform.pathSeparator}impact-grid.png').absolute,
+  ];
+  for (final png in pngs) {
+    if (png.existsSync()) png.deleteSync();
+  }
   final process = await Process.start('flutter', [
     'test',
     'tool${Platform.pathSeparator}membrane_lab_renderer_test.dart',
     '--dart-define=MEMBRANE_LAB_INPUT=${input.absolute.path}',
-    '--dart-define=MEMBRANE_LAB_OUTPUT=${png.path}',
+    '--dart-define=MEMBRANE_LAB_OUTPUT=${pngs[0].path}',
+    '--dart-define=MEMBRANE_LAB_IMPACT_INPUT=${impactInput.absolute.path}',
+    '--dart-define=MEMBRANE_LAB_IMPACT_OUTPUT=${pngs[1].path}',
   ], runInShell: Platform.isWindows);
   final processOutput = StringBuffer();
   process.stdout.transform(utf8.decoder).listen(processOutput.write);
   process.stderr.transform(utf8.decoder).listen(processOutput.write);
   final exitFuture = process.exitCode;
   int? exitCode;
-  var lastPngLength = -1;
-  var stablePngPolls = 0;
+  final lastPngLengths = List<int>.filled(pngs.length, -1);
+  final stablePngPolls = List<int>.filled(pngs.length, 0);
   final deadline = DateTime.now().add(const Duration(seconds: 90));
   while (DateTime.now().isBefore(deadline)) {
-    if (png.existsSync()) {
+    for (var index = 0; index < pngs.length; index++) {
+      final png = pngs[index];
+      if (!png.existsSync()) continue;
       final length = png.lengthSync();
-      if (length > 1000 && length == lastPngLength) {
-        stablePngPolls++;
-        if (stablePngPolls >= 6) {
-          await _stopProcessTree(process);
-          return true;
-        }
+      if (length > 1000 && length == lastPngLengths[index]) {
+        stablePngPolls[index]++;
       } else {
-        stablePngPolls = 0;
+        stablePngPolls[index] = 0;
       }
-      lastPngLength = length;
+      lastPngLengths[index] = length;
+    }
+    if (stablePngPolls.every((polls) => polls >= 6)) {
+      await _stopProcessTree(process);
+      return true;
     }
     exitCode = await exitFuture
         .then<int?>((value) => value)
@@ -922,9 +1227,11 @@ Future<bool> _renderExactPng(Directory output, File input) async {
     if (exitCode != null) break;
   }
   if (exitCode == null) await _stopProcessTree(process);
-  if (png.existsSync() && png.lengthSync() > 1000) return true;
+  if (pngs.every((png) => png.existsSync() && png.lengthSync() > 1000)) {
+    return true;
+  }
   stderr.writeln(
-    'Exact PNG render failed; portable SVG/HTML artifacts remain valid.',
+    'Exact PNG rendering failed; portable SVG/HTML artifacts remain valid.',
   );
   stderr.writeln(processOutput);
   return false;
@@ -972,6 +1279,9 @@ String _replayHtml(List<_Simulation> simulations) {
                   simulation.frames[index].candidate.radii
                       .map(_rounded)
                       .toList(),
+              'i': simulation.frames[index].impacts
+                  .map(_impactJson)
+                  .toList(growable: false),
             },
         ],
       },
@@ -982,7 +1292,7 @@ String _replayHtml(List<_Simulation> simulations) {
 <title>Open Vibrance membrane lab</title><style>
 :root{color-scheme:dark;font:14px/1.45 "Segoe UI",sans-serif;background:#07060a;color:#e9e4ec}*{box-sizing:border-box}body{margin:0;padding:24px;background:radial-gradient(circle at 50% 20%,#21101c,#07060a 65%)}main{max-width:1000px;margin:auto}.panel{background:#100d13;border:1px solid #2d2630;border-radius:16px;padding:16px;box-shadow:0 18px 60px #0008}h1{font-size:20px;margin:0 0 14px}.controls{display:grid;grid-template-columns:auto auto 1fr auto;gap:10px;align-items:center}button,select{background:#211a23;color:#fff;border:1px solid #433746;border-radius:8px;padding:8px 12px}button{cursor:pointer}input[type=range]{width:100%}canvas{width:100%;height:auto;display:block;margin-top:14px;border-radius:12px;background:#050408}.meta{display:flex;justify-content:space-between;color:#a79da9;margin-top:8px}.legend{display:flex;gap:18px}.old{color:#a9a1aa}.new{color:#ff9bc4}@media(max-width:650px){body{padding:10px}.controls{grid-template-columns:auto 1fr}.controls input{grid-column:1/-1}}
 </style></head><body><main><div class="panel"><h1>Real-recording membrane A/B replay</h1><div class="controls"><select id="recording" aria-label="Recording"></select><button id="play">Play</button><input id="scrub" type="range" min="0" max="1" step="0.0001" value="0" aria-label="Timeline"><span id="time">0.00s</span></div><canvas id="view" width="960" height="430"></canvas><div class="meta"><div class="legend"><span class="old">OLD · fixed spectral silhouette</span><span class="new">NEW · temporal membrane + field</span></div><span id="metrics"></span></div></div></main>
-<script>const DATA=$encoded;const select=document.querySelector('#recording'),play=document.querySelector('#play'),scrub=document.querySelector('#scrub'),time=document.querySelector('#time'),metrics=document.querySelector('#metrics'),canvas=document.querySelector('#view'),ctx=canvas.getContext('2d');let record=0,pos=0,running=false,last=0;DATA.forEach((r,i)=>{const o=document.createElement('option');o.value=i;o.textContent=r.name;select.append(o)});function path(radii,cx,cy,scale){ctx.beginPath();radii.forEach((r,i)=>{const a=-Math.PI/2+i*Math.PI*2/radii.length,x=cx+Math.cos(a)*r*scale,y=cy+Math.sin(a)*r*scale;i?ctx.lineTo(x,y):ctx.moveTo(x,y)});ctx.closePath()}function orb(frame,cx,label,candidate){const r=candidate?frame.c:frame.b,scale=9;ctx.save();if(candidate){for(let h=4;h>=1;h--){const prior=DATA[record].frames[Math.max(0,Math.floor(pos)-h*2)];path(prior.c,cx,205,scale*(1-h*.035));ctx.strokeStyle='rgba(255,72,145,'+(.09*(5-h))+')';ctx.lineWidth=1.2;ctx.stroke()}path(r,cx,205,scale);ctx.shadowColor='#ff4f9a';ctx.shadowBlur=18*(.35+frame.l);const g=ctx.createRadialGradient(cx-18*Math.cos(frame.p),185-18*Math.sin(frame.p),8,cx,205,125);g.addColorStop(0,'#3f0719');g.addColorStop(.68,'#bd1742');g.addColorStop(1,'#ff5f78');ctx.fillStyle=g;ctx.fill();ctx.shadowBlur=0;const edge=ctx.createLinearGradient(cx-120,100,cx+120,310);edge.addColorStop(0,'#ffb38d');edge.addColorStop(.48,'#fff3fb');edge.addColorStop(1,'#ff62cf');ctx.strokeStyle=edge;ctx.lineWidth=3;ctx.stroke()}else{path(r,cx,205,scale);ctx.fillStyle='#c91c3f';ctx.fill();ctx.strokeStyle='#fff';ctx.lineWidth=3;ctx.stroke()}ctx.fillStyle=candidate?'#ff9bc4':'#aaa2ab';ctx.font='600 14px Segoe UI';ctx.textAlign='center';ctx.fillText(label,cx,370);ctx.restore()}function draw(){const rec=DATA[record],i=Math.min(rec.frames.length-1,Math.max(0,Math.floor(pos))),f=rec.frames[i];ctx.clearRect(0,0,canvas.width,canvas.height);const bg=ctx.createRadialGradient(480,210,10,480,210,520);bg.addColorStop(0,'#180d17');bg.addColorStop(1,'#050408');ctx.fillStyle=bg;ctx.fillRect(0,0,canvas.width,canvas.height);orb(f,270,'OLD',false);orb(f,690,'NEW',true);scrub.value=rec.frames.length>1?i/(rec.frames.length-1):0;time.textContent=f.t.toFixed(2)+'s';metrics.textContent='level '+f.l.toFixed(2)+' · flux '+f.f.toFixed(2)+' · novelty '+f.n.toFixed(3);}function tick(now){if(!running)return;if(!last)last=now;pos+=(now-last)/1000*30;last=now;const frames=DATA[record].frames;if(pos>=frames.length-1){pos=frames.length-1;running=false;play.textContent='Play'}draw();if(running)requestAnimationFrame(tick)}play.onclick=()=>{if(running){running=false;play.textContent='Play';return}if(pos>=DATA[record].frames.length-1)pos=0;running=true;last=0;play.textContent='Pause';requestAnimationFrame(tick)};scrub.oninput=()=>{pos=Number(scrub.value)*(DATA[record].frames.length-1);draw()};select.onchange=()=>{record=Number(select.value);pos=0;running=false;play.textContent='Play';draw()};draw();</script></body></html>''';
+<script>const DATA=$encoded;const select=document.querySelector('#recording'),play=document.querySelector('#play'),scrub=document.querySelector('#scrub'),time=document.querySelector('#time'),metrics=document.querySelector('#metrics'),canvas=document.querySelector('#view'),ctx=canvas.getContext('2d');let record=0,pos=0,running=false,last=0;DATA.forEach((r,i)=>{const o=document.createElement('option');o.value=i;o.textContent=r.name;select.append(o)});function path(radii,cx,cy,scale){ctx.beginPath();radii.forEach((r,i)=>{const a=-Math.PI/2+i*Math.PI*2/radii.length,x=cx+Math.cos(a)*r*scale,y=cy+Math.sin(a)*r*scale;i?ctx.lineTo(x,y):ctx.moveTo(x,y)});ctx.closePath()}function orb(frame,cx,label,candidate){const r=candidate?frame.c:frame.b,scale=9;ctx.save();if(candidate){for(let h=4;h>=1;h--){const prior=DATA[record].frames[Math.max(0,Math.floor(pos)-h*2)];path(prior.c,cx,205,scale*(1-h*.035));ctx.strokeStyle='rgba(255,72,145,'+(.09*(5-h))+')';ctx.lineWidth=1.2;ctx.stroke()}path(r,cx,205,scale);ctx.shadowColor='#ff4f9a';ctx.shadowBlur=18*(.35+frame.l);const g=ctx.createRadialGradient(cx-18*Math.cos(frame.p),185-18*Math.sin(frame.p),8,cx,205,125);g.addColorStop(0,'#3f0719');g.addColorStop(.68,'#bd1742');g.addColorStop(1,'#ff5f78');ctx.fillStyle=g;ctx.fill();ctx.shadowBlur=0;const edge=ctx.createLinearGradient(cx-120,100,cx+120,310);edge.addColorStop(0,'#ffb38d');edge.addColorStop(.48,'#fff3fb');edge.addColorStop(1,'#ff62cf');ctx.strokeStyle=edge;ctx.lineWidth=3;ctx.stroke()}else{path(r,cx,205,scale);ctx.fillStyle='#c91c3f';ctx.fill();ctx.strokeStyle='#fff';ctx.lineWidth=3;ctx.stroke()}ctx.fillStyle=candidate?'#ff9bc4':'#aaa2ab';ctx.font='600 14px Segoe UI';ctx.textAlign='center';ctx.fillText(label,cx,370);ctx.restore()}function draw(){const rec=DATA[record],i=Math.min(rec.frames.length-1,Math.max(0,Math.floor(pos))),f=rec.frames[i];ctx.clearRect(0,0,canvas.width,canvas.height);const bg=ctx.createRadialGradient(480,210,10,480,210,520);bg.addColorStop(0,'#180d17');bg.addColorStop(1,'#050408');ctx.fillStyle=bg;ctx.fillRect(0,0,canvas.width,canvas.height);orb(f,270,'OLD',false);orb(f,690,'NEW',true);scrub.value=rec.frames.length>1?i/(rec.frames.length-1):0;time.textContent=f.t.toFixed(2)+'s';metrics.textContent='level '+f.l.toFixed(2)+' · flux '+f.f.toFixed(2)+' · novelty '+f.n.toFixed(3)+' · impacts '+f.i.length;}function tick(now){if(!running)return;if(!last)last=now;pos+=(now-last)/1000*30;last=now;const frames=DATA[record].frames;if(pos>=frames.length-1){pos=frames.length-1;running=false;play.textContent='Play'}draw();if(running)requestAnimationFrame(tick)}play.onclick=()=>{if(running){running=false;play.textContent='Play';return}if(pos>=DATA[record].frames.length-1)pos=0;running=true;last=0;play.textContent='Pause';requestAnimationFrame(tick)};scrub.oninput=()=>{pos=Number(scrub.value)*(DATA[record].frames.length-1);draw()};select.onchange=()=>{record=Number(select.value);pos=0;running=false;play.textContent='Play';draw()};draw();</script></body></html>''';
 }
 
 double _rounded(double value) => double.parse(value.toStringAsFixed(4));

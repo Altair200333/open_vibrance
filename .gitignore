@@ -48,3 +48,5 @@ NUL
 /docs/*
 !/docs/architecture/
 !/docs/architecture/**
+!/docs/notes/
+!/docs/notes/**

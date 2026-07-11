@@ -142,12 +142,17 @@ only as an exact offline A/B baseline and geometry fixture. Production uses one
 envelope before projecting the bands, so the same speaker does not pin the
 membrane to one screen sector:
 
+The exact, canonical implementation record—including paint passes, lifecycle,
+history, all constants, and lab caveats—is
+[`Градиентная амёба`](../notes/gradient_amoeba.md).
+
 ```text
 energy[i] = clamp(band[i], 0, 1) ^ 0.90
-slow[i]  += (energy[i] - slow[i]) * (1 - exp(-dt / 0.52s))
-
 absolute[i] = energy[i] - mean(energy)
-novelty[i]  = (energy[i] - slow[i]) - mean(energy - slow)
+novelty[i]  = (energy[i] - slowPrevious[i])
+            - mean(energy - slowPrevious)
+
+slow[i]  += (energy[i] - slow[i]) * (1 - exp(-dt / 0.52s))
 shape[i]    = 0.30 * absolute[i] + 0.70 * 2.50 * novelty[i]
 ```
 
@@ -199,24 +204,27 @@ The 30 x 30 production painter builds the outer path once and uses a compact
 multi-pass material stack:
 
 1. a low-alpha reactive outer glow;
-2. a dark-red-to-coral radial body gradient whose focal point follows the
-   smoothed spectral centroid;
-3. a low-alpha coral/magenta sweep disturbance driven by level, flux, and
-   spectral novelty;
-4. an inner membrane rim and four real delayed contours;
-5. a final coral-to-magenta-to-white rim whose local brightness follows signed
-   deformation and coefficient velocity.
+2. a flat deep-red membrane surface—there is no radial body gradient;
+3. at most two causal, off-center elliptical impact fronts, each made from a
+   dark trailing trough and a chromatic crest clipped to the live body;
+4. a restrained inner membrane rim and one faint delayed contour near 144 ms;
+5. a final coral-to-magenta-to-white rim plus a continuous local highlight
+   where an impact front reaches the boundary.
 
 The widget retains seven immutable coefficient snapshots sampled every 48 ms.
-The painter uses ages near 0, 48, 144, and 240 ms, scales and insets them toward
-the center, clips them to the current body, and draws them with decreasing
-opacity. These are actual prior audio states, not procedural mesh noise, so the
-internal field flows behind the live outline and disappears when activity
-settles. A resume gap above 250 ms clears stale history.
+The painter now uses only the state near 144 ms, scales and insets it toward the
+center, clips it to the current body, and draws it at very low opacity. This is
+an actual prior audio state, not procedural mesh noise. A resume gap above
+250 ms clears stale history.
 
-The current cost is five 96-vertex paths, a small sweep palette, and one tiny
-blur inside the existing `RepaintBoundary`. No `saveLayer`, `PathMetric`, image
-filter, random source, or autonomous animation is used.
+Impact creation is separate from rendering. A pure-Dart Schmitt/refractory
+controller observes only new spectrum targets and emits deterministic immutable
+snapshots from flux, temporal novelty, and Fourier-target delta. Vsync only
+ages those snapshots for 550 ms; it cannot inject new energy. There is no
+random source or autonomous animation. The speech-tuned Schmitt gate uses
+trigger/rearm `0.30/0.24` with a 120 ms refractory interval and a 0.40 minimum
+impact strength; three fresh speech WAVs measured 0.98-1.50 impacts/s instead
+of the previous 0.45-0.77 impacts/s.
 
 ### Scalar fallback
 
@@ -265,7 +273,9 @@ It writes:
   reimplementing the model in JavaScript;
 - per-recording `points.ndjson`, `trace.json`, and portable SVG contact sheets;
 - `render_frames.json` plus a PNG contact sheet rendered by Flutter with the
-  production painter.
+  production painter;
+- `impact_frames.json` plus an exact 8 x 3 Flutter-rendered grid covering low,
+  medium, and high real impacts at eight ages each.
 
 Personal recordings and generated lab outputs stay outside source control. The
 lab is a repeatable tuning instrument, not a golden-image assertion: metrics
@@ -278,6 +288,7 @@ replay/contact sheet remains the visual acceptance step.
 |---|---|
 | `lib/services/audio_spectrum_analyzer.dart` | PCM decoding, STFT, band normalization, envelopes, flux |
 | `lib/services/recording_membrane.dart` | Shared pure-Dart stateful mapper, legacy A/B baseline, Fourier geometry, analytic spring |
+| `lib/services/recording_membrane_impact.dart` | Deterministic impact detector, immutable causal wave snapshots, lifetime/envelope math |
 | `lib/services/audio_service.dart` | Observer-only analyzer integration, fallback, lifecycle isolation |
 | `lib/widgets/dot_window.dart` | Pass immutable spectrum frame through the existing scoped rebuild |
 | `lib/widgets/dot_indicator.dart` | Select real spectrum or scalar fallback for recording state |

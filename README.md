@@ -89,5 +89,6 @@ flutter run -d windows  # or macos / linux
 ## Development Notes
 
 - [Audio spectrum visualizer architecture](docs/architecture/audio_spectrum_visualizer.md) — PCM/FFT data flow, safety invariants, rejected prototypes, and the Fourier-membrane renderer.
+- [Градиентная амёба](docs/notes/gradient_amoeba.md) — canonical contour and causal impact-wave formulas, paint stack, lifecycle, tuning map, real-WAV lab, and measured recording-indicator behavior.
 
 Requires the [Flutter SDK](https://flutter.dev/docs/get-started/install). The app depends on a [forked window_manager](https://github.com/Altair200333/window_manager) — clone it next to the project directory.
