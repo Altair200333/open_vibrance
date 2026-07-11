@@ -28,12 +28,14 @@ class DotWindow extends StatefulWidget {
   State<DotWindow> createState() => _DotWindowState();
 }
 
-class _DotWindowState extends State<DotWindow> with WindowListener {
+class _DotWindowState extends State<DotWindow>
+    with WindowListener, SingleTickerProviderStateMixin {
   IndicatorState _indicatorState = IndicatorState.idle;
   bool _dragging = false;
   bool _hoveringIndicator = false;
   bool _showWindowContent = false;
   bool _settingsBoxVisible = false;
+  bool _settingsTransitioning = false;
 
   late final AudioService _audioService;
 
@@ -50,10 +52,22 @@ class _DotWindowState extends State<DotWindow> with WindowListener {
   bool? _windowInteractive;
   bool _desiredWindowInteractive = false;
   bool _updatingWindowInteraction = false;
+  late final AnimationController _settingsTransitionController;
+  late final CurvedAnimation _settingsTransition;
 
   @override
   void initState() {
     super.initState();
+    _settingsTransitionController = AnimationController(
+      vsync: this,
+      duration: kSettingsTransitionDuration,
+      reverseDuration: kSettingsTransitionDuration,
+    );
+    _settingsTransition = CurvedAnimation(
+      parent: _settingsTransitionController,
+      curve: Curves.easeOutCubic,
+      reverseCurve: Curves.easeInCubic,
+    );
     _initWindow();
 
     _registerHotKeys();
@@ -125,6 +139,8 @@ class _DotWindowState extends State<DotWindow> with WindowListener {
         }
         _session = BatchSession(recordingPath: path);
       }
+    } on TickerCanceled {
+      // Expected when the app is disposed during the transition.
     } catch (e) {
       dprint('Recording failed: $e');
       if (_disposed) return;
@@ -328,7 +344,9 @@ class _DotWindowState extends State<DotWindow> with WindowListener {
   }
 
   bool _canStartRecording() =>
-      !_disposed && _indicatorState == IndicatorState.idle;
+      !_disposed &&
+      !_settingsTransitioning &&
+      _indicatorState == IndicatorState.idle;
 
   bool _canStopRecording() =>
       !_disposed && _indicatorState == IndicatorState.recording;
@@ -401,6 +419,10 @@ class _DotWindowState extends State<DotWindow> with WindowListener {
       // so Windows enforces SM_CYMINTRACK (~36px) as minimum height.
       // Now that minimumSize is set, the correct 30px height is allowed.
       await windowManager.setSize(initialWindowSize);
+      // Keep the full transition range available so opening/closing only needs
+      // one native bounds update instead of extra platform-channel calls.
+      await windowManager.setMinimumSize(initialWindowSize);
+      await windowManager.setMaximumSize(expandedWindowSize);
 
       windowManager.addListener(this);
 
@@ -417,6 +439,8 @@ class _DotWindowState extends State<DotWindow> with WindowListener {
   void dispose() {
     _disposed = true;
     _exitDebounce?.cancel();
+    _settingsTransition.dispose();
+    _settingsTransitionController.dispose();
     // Cancel transcript finalization immediately. `_disposed` prevents the
     // stop path from saving or pasting any provisional value.
     final sessionDisposal = _endSession();
@@ -505,7 +529,9 @@ class _DotWindowState extends State<DotWindow> with WindowListener {
   }
 
   void onMouseExitWindow(PointerExitEvent _) {
-    if (_indicatorState == IndicatorState.expanded || _dragging) {
+    if (_indicatorState == IndicatorState.expanded ||
+        _dragging ||
+        _settingsTransitioning) {
       return;
     }
 
@@ -548,63 +574,111 @@ class _DotWindowState extends State<DotWindow> with WindowListener {
   }
 
   Future<void> _handleToggleSettingsBox() async {
+    if (_settingsTransitioning) return;
+    _settingsTransitioning = true;
     final isExpanded = _indicatorState == IndicatorState.expanded;
 
-    // Use actual window bounds to avoid DPI/OS rounding discrepancies
-    final currentPos = await windowManager.getPosition();
-    final currentSize = await windowManager.getSize();
-    final Size targetSize;
-    if (isExpanded) {
-      // Collapsing: use the actual idle size (may differ from nominal due to OS constraints)
-      targetSize = _actualIdleSize;
-    } else {
-      // Expanding: save actual idle size before growing
-      _actualIdleSize = currentSize;
-      targetSize = expandedWindowSize;
+    try {
+      // Use actual bounds to preserve the exact bottom edge across DPI and OS
+      // rounding instead of relying on the nominal idle size.
+      final currentPos = await windowManager.getPosition();
+      final currentSize = await windowManager.getSize();
+      final Size targetSize;
+      if (isExpanded) {
+        targetSize = _actualIdleSize;
+      } else {
+        _actualIdleSize = currentSize;
+        targetSize = expandedWindowSize;
+      }
+
+      final newTop = currentPos.dy + currentSize.height - targetSize.height;
+      final bounds = Rect.fromLTWH(
+        currentPos.dx,
+        newTop,
+        targetSize.width,
+        targetSize.height,
+      );
+
+      if (!mounted) return;
+      if (isExpanded) {
+        await _collapseSettingsBox(bounds);
+      } else {
+        await _expandSettingsBox(bounds);
+      }
+    } catch (e) {
+      dprint('Settings transition failed: $e');
+    } finally {
+      _settingsTransitioning = false;
     }
+  }
 
-    // Keep the bottom edge pinned at the same screen position
-    final newTop = currentPos.dy + currentSize.height - targetSize.height;
-    final bounds = Rect.fromLTWH(
-      currentPos.dx,
-      newTop,
-      targetSize.width,
-      targetSize.height,
-    );
-
-    if (!mounted) return;
-    setState(() {
-      _settingsBoxVisible = !isExpanded;
-      _indicatorState =
-          isExpanded ? IndicatorState.idle : IndicatorState.expanded;
-    });
-
-    // Hide window during resize to prevent visual flash & overflow
-    // (setBounds is not visually atomic on Windows — position and size
-    //  may apply in separate frames, causing a brief glitch).
-    await windowManager.setOpacity(0);
-
-    // Relax constraints to allow target size, then set bounds atomically.
-    // Locking min=max after setBounds can trigger Windows to re-adjust position.
-    await windowManager.setMinimumSize(initialWindowSize);
-    await windowManager.setMaximumSize(expandedWindowSize);
+  Future<void> _expandSettingsBox(Rect bounds) async {
+    // Resize first while only the bottom-pinned indicator is painted. The new
+    // area is transparent, so the geometry change itself has nothing to flash.
     await windowManager.setBounds(bounds);
+    await _waitForNextFrame();
+    if (!mounted) return;
 
-    await windowManager.setOpacity(1);
+    _settingsTransitionController.value = 0;
+    setState(() {
+      _settingsBoxVisible = true;
+      _indicatorState = IndicatorState.expanded;
+    });
+    await _setWindowInteractive(true);
 
-    if (isExpanded) {
+    // Build and lay out the panel at opacity zero before its first visible
+    // animation frame.
+    await _waitForNextFrame();
+    if (!mounted) return;
+    await _settingsTransitionController.forward().orCancel;
+  }
+
+  Future<void> _collapseSettingsBox(Rect bounds) async {
+    // Morph the indicator back while the panel fades toward its anchor.
+    setState(() => _indicatorState = IndicatorState.idle);
+    await _settingsTransitionController.reverse().orCancel;
+    if (!mounted) return;
+
+    setState(() => _settingsBoxVisible = false);
+    await _waitForNextFrame();
+    if (!mounted) return;
+
+    // Once only the indicator remains, shrinking the transparent HWND cannot
+    // expose a clipped SettingsBox frame.
+    await windowManager.setBounds(bounds);
+    await _waitForNextFrame();
+    if (!await _isCursorInsideWindow()) {
       await _setWindowInteractive(false);
     }
   }
 
+  Future<bool> _isCursorInsideWindow() async {
+    try {
+      final diagnostics = await windowManager.getMouseDiagnostics();
+      if (diagnostics.isEmpty) return _hoveringIndicator;
+      return diagnostics['cursorInside'] == true;
+    } catch (_) {
+      // Non-Windows implementations may not expose native diagnostics.
+      return _hoveringIndicator;
+    }
+  }
+
+  Future<void> _waitForNextFrame() async {
+    if (!mounted) return;
+    final binding = WidgetsBinding.instance;
+    binding.scheduleFrame();
+    await binding.endOfFrame;
+  }
+
   bool _canToggleSettingsBox() {
-    return _indicatorState == IndicatorState.idle ||
-        _indicatorState == IndicatorState.expanded;
+    return !_settingsTransitioning &&
+        (_indicatorState == IndicatorState.idle ||
+            _indicatorState == IndicatorState.expanded);
   }
 
   void onIndicatorTap() {
     if (!_canToggleSettingsBox()) return;
-    _handleToggleSettingsBox();
+    unawaited(_handleToggleSettingsBox());
   }
 
   void _onRecordingStarted() {
@@ -652,6 +726,7 @@ class _DotWindowState extends State<DotWindow> with WindowListener {
             if (_settingsBoxVisible)
               SettingsBox(
                 expandedWindowSize: expandedWindowSize,
+                transitionAnimation: _settingsTransition,
                 onHotkeyChanged: _onHotkeyChanged,
                 onRecordingStarted: _onRecordingStarted,
                 historyRepository: _historyRepository,

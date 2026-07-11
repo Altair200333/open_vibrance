@@ -27,10 +27,12 @@ class SettingsBox extends StatefulWidget {
   final VoidCallback onRecordingStarted;
   final HistoryRepository historyRepository;
   final TranscriptionService transcriptionService;
+  final Animation<double> transitionAnimation;
 
   const SettingsBox({
     super.key,
     required this.expandedWindowSize,
+    required this.transitionAnimation,
     required this.onHotkeyChanged,
     required this.onRecordingStarted,
     required this.historyRepository,
@@ -138,7 +140,7 @@ class _SettingsBoxState extends State<SettingsBox> {
     return Positioned(
       bottom: kDotSize * 2,
       left: kDotSize * 2.5,
-      child: _buildSettingsContainer(
+      child: _buildTransitioningSettingsContainer(
         colors: colors,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -195,6 +197,31 @@ class _SettingsBoxState extends State<SettingsBox> {
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildTransitioningSettingsContainer({
+    required AppColorTheme colors,
+    required Widget child,
+  }) {
+    return AnimatedBuilder(
+      animation: widget.transitionAnimation,
+      child: _buildSettingsContainer(colors: colors, child: child),
+      builder: (context, child) {
+        final progress = widget.transitionAnimation.value;
+        return IgnorePointer(
+          ignoring:
+              widget.transitionAnimation.status != AnimationStatus.completed,
+          child: Opacity(
+            opacity: progress,
+            child: Transform.scale(
+              scale: 0.98 + progress * 0.02,
+              alignment: Alignment.bottomLeft,
+              child: child,
+            ),
+          ),
+        );
+      },
     );
   }
 
