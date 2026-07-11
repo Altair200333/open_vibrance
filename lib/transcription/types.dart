@@ -2,6 +2,8 @@ enum StorageKey {
   transcriptionProvider('transcription_provider'),
   elevenLabsApiKey('elevenlabs_api_key'),
   elevenLabsModel('elevenlabs_model'),
+  elevenLabsRealtimeFilteringEnabled('elevenlabs_realtime_filtering_enabled'),
+  openRouterApiKey('openrouter_api_key'),
   openAiApiKey('openai_api_key'),
   openAiModel('openai_model'),
   openAiPrompt('openai_prompt'),

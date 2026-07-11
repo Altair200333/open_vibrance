@@ -10,12 +10,22 @@ import 'package:clipboard/clipboard.dart';
 import 'package:open_vibrance/utils/clipboard.dart';
 import 'package:open_vibrance/utils/common.dart';
 import 'package:open_vibrance/transcription/types.dart';
+import 'package:open_vibrance/services/openrouter_transcription_filter.dart';
+
+typedef TranscriptionFilterFactory =
+    TranscriptionFilter Function(String apiKey);
 
 class TranscriptionService {
   final SecureStorageService _storageService;
+  final TranscriptionFilterFactory _transcriptionFilterFactory;
 
-  TranscriptionService([SecureStorageService? storage])
-    : _storageService = storage ?? SecureStorageService();
+  TranscriptionService({
+    SecureStorageService? storageService,
+    TranscriptionFilterFactory? transcriptionFilterFactory,
+  }) : _storageService = storageService ?? SecureStorageService(),
+       _transcriptionFilterFactory =
+           transcriptionFilterFactory ??
+           ((apiKey) => OpenRouterTranscriptionFilter(apiKey: apiKey));
 
   Future<TranscriptionProviderKey> _getSelectedProvider() async {
     final storedValue = await _storageService.readValue(
@@ -40,8 +50,6 @@ class TranscriptionService {
         return OpenAITranscriptionProvider();
       case TranscriptionProviderKey.custom:
         return CustomTranscriptionProvider();
-      default:
-        throw UnimplementedError('$providerKey provider not implemented');
     }
   }
 
@@ -98,5 +106,54 @@ class TranscriptionService {
     ).transcribe(bytes);
     dprint('ElevenLabs batch fallback transcription: $transcription');
     return transcription;
+  }
+
+  /// Cleans a completed ElevenLabs realtime transcript when the optional
+  /// OpenRouter filter is enabled. Filtering is fail-open: recording success
+  /// must never depend on a second cloud service.
+  Future<String> filterRealtimeTranscription(String transcription) async {
+    if (transcription.trim().isEmpty) {
+      dprint('[Transcription filter] skipped: transcript is empty');
+      return transcription;
+    }
+
+    try {
+      final enabled = await _storageService.readValue(
+        StorageKey.elevenLabsRealtimeFilteringEnabled.key,
+      );
+      if (enabled != 'true') {
+        dprint('[Transcription filter] skipped: disabled');
+        return transcription;
+      }
+
+      final apiKey =
+          (await _storageService.readValue(
+            StorageKey.openRouterApiKey.key,
+          ))?.trim();
+      if (apiKey == null || apiKey.isEmpty) {
+        dprint('[Transcription filter] skipped: OpenRouter API key is missing');
+        return transcription;
+      }
+
+      dprint(
+        '[Transcription filter] request started '
+        '(model: ${OpenRouterTranscriptionFilter.modelId})',
+      );
+      final filtered = await _transcriptionFilterFactory(
+        apiKey,
+      ).filter(transcription);
+      if (filtered.trim().isEmpty) {
+        dprint('[Transcription filter] empty result; using original text');
+        return transcription;
+      }
+      dprint('[Transcription filter] request succeeded');
+      return filtered;
+    } catch (e) {
+      dprint(
+        '[Transcription filter] failed; using original text '
+        '(${e.runtimeType})',
+      );
+      return transcription;
+    }
   }
 }

@@ -114,6 +114,7 @@ class _DotWindowState extends State<DotWindow>
             .listen(
               (text) {
                 session.lastTranscript = text;
+                dprint('[Transcription][live] $text');
               },
               onError: (e) {
                 dprint('Streaming transcription error: $e');
@@ -229,6 +230,15 @@ class _DotWindowState extends State<DotWindow>
       if (_disposed || session.cancelled) return;
     }
 
+    dprint('[Transcription][before-filter] $transcription');
+    transcription = await _transcriptionService.filterRealtimeTranscription(
+      transcription,
+    );
+    dprint('[Transcription][after-filter] $transcription');
+    if (_disposed || session.cancelled || !identical(_session, session)) {
+      return;
+    }
+
     // Save history FIRST — clipboard failure must not lose the transcription
     await _saveHistoryEntry(
       path: path,
@@ -242,6 +252,9 @@ class _DotWindowState extends State<DotWindow>
       try {
         await FlutterClipboard.copy(transcription);
         await Future.delayed(const Duration(milliseconds: 100));
+        if (_disposed || session.cancelled || !identical(_session, session)) {
+          return;
+        }
         await pasteContent();
       } catch (e) {
         dprint('Clipboard/paste failed: $e');
