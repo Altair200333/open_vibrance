@@ -12,6 +12,7 @@ const double kRadiusMd = 8.0;
 // Hover animation
 const Duration kHoverDuration = Duration(milliseconds: 200);
 const Curve kHoverCurve = Curves.easeOut;
+const Duration kSettingsTransitionDuration = Duration(milliseconds: 180);
 
 // Font sizes
 const double kFontSizeXs = 11.0;

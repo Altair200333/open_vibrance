@@ -2,7 +2,6 @@ import 'dart:convert';
 import 'dart:typed_data';
 import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
-import 'package:open_vibrance/transcription/elevenlabs_realtime_transcription_provider.dart';
 import 'package:open_vibrance/transcription/transcription_provider.dart';
 import 'package:open_vibrance/transcription/types.dart';
 import 'package:open_vibrance/services/storage_service.dart';
@@ -44,10 +43,17 @@ extension ElevenLabsModelExtension on ElevenLabsModel {
 
 /// Implementation of [TranscriptionService] using ElevenLabs Speech-to-Text API.
 class ElevenLabsTranscriptionProvider implements TranscriptionProvider {
-  ElevenLabsTranscriptionProvider();
+  final ElevenLabsModel? _modelOverride;
+  final SecureStorageService _storageService;
+
+  ElevenLabsTranscriptionProvider({
+    ElevenLabsModel? modelOverride,
+    SecureStorageService? storageService,
+  }) : _modelOverride = modelOverride,
+       _storageService = storageService ?? SecureStorageService();
 
   Future<ElevenLabsModel> _loadModel() async {
-    final modelId = await SecureStorageService().readValue(
+    final modelId = await _storageService.readValue(
       StorageKey.elevenLabsModel.key,
     );
     return ElevenLabsModelExtension.fromKey(modelId);
@@ -55,20 +61,19 @@ class ElevenLabsTranscriptionProvider implements TranscriptionProvider {
 
   @override
   Future<String> transcribe(Uint8List audioBytes) async {
-    final apiKey = await SecureStorageService().readValue(
+    final apiKey = await _storageService.readValue(
       StorageKey.elevenLabsApiKey.key,
     );
-    final model = await _loadModel();
+    final selectedModel = _modelOverride ?? await _loadModel();
+    // A saved file has a definitive batch endpoint. Do not replay it through
+    // the realtime protocol: multi-commit WebSocket responses have no
+    // correlation id and therefore cannot prove finality for long recordings.
+    final model =
+        selectedModel.isRealtime ? ElevenLabsModel.scribeV2 : selectedModel;
     dprint('Running transcription with model: $model');
 
     if (apiKey == null) {
       throw Exception('ElevenLabs API key not found');
-    }
-
-    // Delegate to realtime provider for WebSocket-based model
-    if (model.isRealtime) {
-      return ElevenLabsRealtimeTranscriptionProvider(apiKey)
-          .transcribe(audioBytes);
     }
 
     final uri = Uri.parse('https://api.elevenlabs.io/v1/speech-to-text');

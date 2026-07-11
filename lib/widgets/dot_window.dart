@@ -3,7 +3,7 @@ import 'package:clipboard/clipboard.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:open_vibrance/services/transcription_service.dart';
-import 'package:open_vibrance/transcription/streaming_transcription_provider.dart';
+import 'package:open_vibrance/services/recording_session.dart';
 import 'package:open_vibrance/utils/clipboard.dart';
 import 'package:open_vibrance/utils/common.dart';
 import 'package:screen_retriever/screen_retriever.dart';
@@ -28,34 +28,46 @@ class DotWindow extends StatefulWidget {
   State<DotWindow> createState() => _DotWindowState();
 }
 
-class _DotWindowState extends State<DotWindow> with WindowListener {
+class _DotWindowState extends State<DotWindow>
+    with WindowListener, SingleTickerProviderStateMixin {
   IndicatorState _indicatorState = IndicatorState.idle;
   bool _dragging = false;
-  bool _hoveringWindow = false;
   bool _hoveringIndicator = false;
   bool _showWindowContent = false;
   bool _settingsBoxVisible = false;
-
-  double _pointerX = 0;
-  double _pointerY = 0;
+  bool _settingsTransitioning = false;
 
   late final AudioService _audioService;
 
   final ShortcutHelper _shortcutHelper = ShortcutHelper();
   final TranscriptionService _transcriptionService = TranscriptionService();
   final HistoryRepository _historyRepository = HistoryRepository();
-  String? _currentRecordingPath;
   Timer? _exitDebounce;
   Size _actualIdleSize = initialWindowSize;
 
-  // Streaming state
-  StreamingTranscriptionProvider? _streamingProvider;
-  StreamSubscription<String>? _transcriptSubscription;
-  String _lastTranscript = '';
+  RecordingSession? _session;
+  Future<void>? _startRecordingFuture;
+  Future<void>? _stopRecordingFuture;
+  bool _disposed = false;
+  bool? _windowInteractive;
+  bool _desiredWindowInteractive = false;
+  bool _updatingWindowInteraction = false;
+  late final AnimationController _settingsTransitionController;
+  late final CurvedAnimation _settingsTransition;
 
   @override
   void initState() {
     super.initState();
+    _settingsTransitionController = AnimationController(
+      vsync: this,
+      duration: kSettingsTransitionDuration,
+      reverseDuration: kSettingsTransitionDuration,
+    );
+    _settingsTransition = CurvedAnimation(
+      parent: _settingsTransitionController,
+      curve: Curves.easeOutCubic,
+      reverseCurve: Curves.easeInCubic,
+    );
     _initWindow();
 
     _registerHotKeys();
@@ -74,171 +86,303 @@ class _DotWindowState extends State<DotWindow> with WindowListener {
   }
 
   Future<void> _startRecording() async {
+    String? path;
     try {
-      _currentRecordingPath = await _historyRepository.generateRecordingPath();
-
-      // Check if real-time streaming is available
-      final streamingProvider = await _transcriptionService.getStreamingProvider();
+      path = await _historyRepository.generateRecordingPath();
+      if (_disposed) return;
+      final streamingProvider =
+          await _transcriptionService.getStreamingProvider();
+      if (_disposed) return;
 
       if (streamingProvider != null) {
-        // ── REAL-TIME PATH ──
-        _streamingProvider = streamingProvider;
-        _lastTranscript = '';
-
         final pcmStream = await _audioService.startStreaming();
-        final transcriptStream = streamingProvider.transcribeStream(
-          pcmStream,
-          sampleRate: 16000,
+        if (_disposed) {
+          await _audioService.forceReset();
+          return;
+        }
+        final transcriptDone = Completer<void>();
+
+        final session = StreamingSession(
+          recordingPath: path,
+          provider: streamingProvider,
+          transcriptDone: transcriptDone,
         );
 
-        _transcriptSubscription = transcriptStream.listen(
-          (text) {
-            _lastTranscript = text;
-            dprint('Live transcript: $text');
-          },
-          onError: (e) => dprint('Streaming transcription error: $e'),
-        );
+        // Callbacks reference `session` safely — they fire after this sync block.
+        session.transcriptSubscription = streamingProvider
+            .transcribeStream(pcmStream, sampleRate: 16000)
+            .listen(
+              (text) {
+                session.lastTranscript = text;
+              },
+              onError: (e) {
+                dprint('Streaming transcription error: $e');
+                session.transcriptError = e;
+                if (!transcriptDone.isCompleted) transcriptDone.complete();
+              },
+              onDone: () {
+                if (!transcriptDone.isCompleted) transcriptDone.complete();
+              },
+            );
+
+        if (_disposed) {
+          await session.dispose();
+          await _audioService.forceReset();
+          return;
+        }
+        _session = session;
       } else {
-        // ── BATCH PATH (existing, unchanged) ──
-        await _audioService.start(path: _currentRecordingPath!);
+        await _audioService.start(path: path);
+        if (_disposed) {
+          await _audioService.forceReset();
+          return;
+        }
+        _session = BatchSession(recordingPath: path);
       }
+    } on TickerCanceled {
+      // Expected when the app is disposed during the transition.
     } catch (e) {
       dprint('Recording failed: $e');
-      if (!mounted) return;
-      setState(() => _indicatorState = IndicatorState.idle);
-    }
-  }
-
-  Future<void> _transcribeFile(String path) async {
-    try {
-      setState(() => _indicatorState = IndicatorState.transcribing);
-
-      final transcription = await _transcriptionService.transcribeFileAndPaste(path);
-
-      await _historyRepository.addEntry(HistoryEntry(
-        id: _historyRepository.idFromPath(path),
-        audioFilePath: path,
-        transcription: transcription,
-        timestamp: DateTime.now(),
-        success: true,
-      ));
-      _historyRepository.cleanup();
-    } catch (e) {
-      dprint('Error transcribing file: $e');
-
+      if (_disposed) return;
       try {
-        await _historyRepository.addEntry(HistoryEntry(
-          id: _historyRepository.idFromPath(path),
-          audioFilePath: path,
-          timestamp: DateTime.now(),
-          success: false,
-        ));
-      } catch (e) {
-        dprint('Failed to save error entry: $e');
+        await _audioService.forceReset();
+      } catch (_) {}
+      await _saveErrorEntry(path: path);
+      await _endSession();
+      if (!mounted) {
+        return;
       }
-
-      if (!mounted) return;
-      setState(() => _indicatorState = IndicatorState.error);
-      await Future.delayed(const Duration(milliseconds: 1200));
+      await _showErrorThenIdle();
     }
-
-    if (!mounted) return;
-    setState(() => _indicatorState = IndicatorState.idle);
   }
 
   Future<void> _stopRecording() async {
     if (!_canStopRecording()) {
-      dprint('Not recording, cant stop');
       return;
     }
 
-    if (_streamingProvider != null) {
-      // ── REAL-TIME PATH ──
+    // Serialize with _startRecording — do NOT set state yet.
+    if (_startRecordingFuture != null) {
       try {
-        setState(() => _indicatorState = IndicatorState.transcribing);
+        await _startRecordingFuture;
+      } catch (_) {}
+      _startRecordingFuture = null;
+    }
 
-        // Stop recording → builds WAV from buffered PCM, saves to disk
-        final path = await _audioService.stopStreaming(_currentRecordingPath!);
+    if (_disposed || !mounted) {
+      return;
+    }
 
-        // Wait for transcript stream to finish (commit + final response)
-        await _transcriptSubscription?.asFuture();
-        await _transcriptSubscription?.cancel();
+    // Re-check: start may have failed (→idle) or another stop may have
+    // already set transcribing. Either way, nothing to do.
+    if (!_canStopRecording()) {
+      dprint('Recording start failed or already stopping');
+      return;
+    }
 
-        final transcription = _lastTranscript;
-        _streamingProvider = null;
-        _transcriptSubscription = null;
+    setState(() => _indicatorState = IndicatorState.transcribing);
 
-        if (transcription.isNotEmpty) {
-          // Copy to clipboard + paste
-          await FlutterClipboard.copy(transcription);
-          await Future.delayed(const Duration(milliseconds: 100));
-          await pasteContent();
-
-          // Save to history
-          await _historyRepository.addEntry(HistoryEntry(
-            id: _historyRepository.idFromPath(path),
-            audioFilePath: path,
-            transcription: transcription,
-            timestamp: DateTime.now(),
-            success: true,
-          ));
-          _historyRepository.cleanup();
-        }
-      } catch (e) {
-        dprint('Streaming transcription error: $e');
-
-        // Save error entry to history
-        try {
-          await _historyRepository.addEntry(HistoryEntry(
-            id: _historyRepository.idFromPath(_currentRecordingPath!),
-            audioFilePath: _currentRecordingPath!,
-            timestamp: DateTime.now(),
-            success: false,
-          ));
-        } catch (e) {
-          dprint('Failed to save error entry: $e');
-        }
-
-        if (!mounted) return;
-        setState(() => _indicatorState = IndicatorState.error);
-        await Future.delayed(const Duration(milliseconds: 1200));
-      }
-
-      if (!mounted) return;
-      setState(() => _indicatorState = IndicatorState.idle);
-    } else {
-      // ── BATCH PATH (existing, unchanged) ──
-      final path = await _audioService.stop();
-      if (path != null) {
-        await _transcribeFile(path);
-      } else {
-        if (!mounted) return;
+    final session = _session;
+    if (session == null) {
+      if (mounted) {
         setState(() => _indicatorState = IndicatorState.idle);
       }
-    }
-  }
-
-  bool _canStartRecording() => _indicatorState == IndicatorState.idle;
-
-  bool _canStopRecording() => _indicatorState == IndicatorState.recording;
-
-  void _onStartRecording() {
-    if (!_canStartRecording()) {
       return;
     }
-    setState(() => _indicatorState = IndicatorState.recording);
-    _startRecording();
+
+    try {
+      switch (session) {
+        case StreamingSession():
+          await _stopStreaming(session);
+        case BatchSession():
+          await _stopBatch(session);
+      }
+    } catch (e) {
+      dprint('Stop recording error: $e');
+      if (_disposed) return;
+      try {
+        await _audioService.forceReset();
+      } catch (_) {}
+      await _saveErrorEntry(path: session.recordingPath);
+      if (!mounted) {
+        return;
+      }
+      await _showErrorThenIdle();
+    } finally {
+      await _endSession();
+    }
   }
 
-  void _onStopRecording() => _stopRecording();
+  Future<void> _stopStreaming(StreamingSession session) async {
+    final path = await _audioService.stopStreaming(session.recordingPath);
+    await session.transcriptDone.future;
+    if (_disposed || session.cancelled) return;
+    var transcription = session.lastTranscript;
+
+    if (session.transcriptError != null) {
+      dprint(
+        'Realtime finalization failed, using saved WAV batch fallback: '
+        '${session.transcriptError}',
+      );
+      transcription = await _transcriptionService
+          .transcribeFileWithElevenLabsBatch(path);
+      if (_disposed || session.cancelled) return;
+    }
+
+    // Save history FIRST — clipboard failure must not lose the transcription
+    await _saveHistoryEntry(
+      path: path,
+      transcription: transcription.isNotEmpty ? transcription : null,
+      success: transcription.isNotEmpty,
+    );
+
+    if (_disposed || session.cancelled) return;
+
+    if (transcription.isNotEmpty) {
+      try {
+        await FlutterClipboard.copy(transcription);
+        await Future.delayed(const Duration(milliseconds: 100));
+        await pasteContent();
+      } catch (e) {
+        dprint('Clipboard/paste failed: $e');
+      }
+    }
+
+    if (!mounted) {
+      return;
+    }
+    setState(() => _indicatorState = IndicatorState.idle);
+  }
+
+  Future<void> _stopBatch(BatchSession session) async {
+    final path = await _audioService.stop();
+
+    if (_disposed) return;
+
+    if (path == null) {
+      await _saveErrorEntry(path: session.recordingPath);
+      if (!mounted) {
+        return;
+      }
+      setState(() => _indicatorState = IndicatorState.idle);
+      return;
+    }
+
+    final transcription = await _transcriptionService.transcribeFileAndPaste(
+      path,
+    );
+
+    if (_disposed) return;
+
+    await _saveHistoryEntry(
+      path: path,
+      transcription: transcription,
+      success: true,
+    );
+
+    if (!mounted) {
+      return;
+    }
+    setState(() => _indicatorState = IndicatorState.idle);
+  }
+
+  Future<void> _endSession() async {
+    try {
+      await _session?.dispose();
+    } catch (e) {
+      dprint('Session dispose error: $e');
+    } finally {
+      _session = null;
+    }
+  }
+
+  /// Throws on failure — callers in success paths let this propagate to their
+  /// catch block (which saves an error entry and shows the error indicator).
+  Future<void> _saveHistoryEntry({
+    required String path,
+    String? transcription,
+    required bool success,
+  }) async {
+    await _historyRepository.addEntry(
+      HistoryEntry(
+        id: _historyRepository.idFromPath(path),
+        audioFilePath: path,
+        transcription: transcription,
+        timestamp: DateTime.now(),
+        success: success,
+      ),
+    );
+    if (success) {
+      _historyRepository.cleanup();
+    }
+  }
+
+  /// Saves an error entry. Accepts explicit [path] for cases where _session
+  /// hasn't been assigned yet. Swallows exceptions (already in error path).
+  Future<void> _saveErrorEntry({String? path}) async {
+    final recordingPath = path ?? _session?.recordingPath;
+    if (recordingPath == null) {
+      return;
+    }
+    try {
+      await _saveHistoryEntry(path: recordingPath, success: false);
+    } catch (e) {
+      dprint('Failed to save error entry: $e');
+    }
+  }
+
+  Future<void> _showErrorThenIdle() async {
+    if (!mounted) {
+      return;
+    }
+    setState(() => _indicatorState = IndicatorState.error);
+    await Future.delayed(const Duration(milliseconds: 1200));
+    if (!mounted) {
+      return;
+    }
+    setState(() => _indicatorState = IndicatorState.idle);
+  }
+
+  bool _canStartRecording() =>
+      !_disposed &&
+      !_settingsTransitioning &&
+      _indicatorState == IndicatorState.idle;
+
+  bool _canStopRecording() =>
+      !_disposed && _indicatorState == IndicatorState.recording;
+
+  void _onStartRecording() {
+    if (!_canStartRecording()) return;
+    _exitDebounce?.cancel();
+    setState(() {
+      _indicatorState = IndicatorState.recording;
+      _dragging = false;
+      _hoveringIndicator = false;
+      _showWindowContent = false;
+    });
+    unawaited(_setWindowInteractive(false));
+    _startRecordingFuture = _startRecording();
+  }
+
+  void _onStopRecording() {
+    if (_stopRecordingFuture != null) return;
+
+    late final Future<void> stopFuture;
+    stopFuture = _stopRecording()
+        .catchError((e) {
+          dprint('Unhandled stop recording error: $e');
+        })
+        .whenComplete(() {
+          if (identical(_stopRecordingFuture, stopFuture)) {
+            _stopRecordingFuture = null;
+          }
+        });
+    _stopRecordingFuture = stopFuture;
+  }
 
   @override
   void onWindowMoved() {
-    setState(() {
-      _dragging = false;
-      _hoveringWindow = true;
-      _showWindowContent = true;
-    });
+    setState(() => _dragging = false);
   }
 
   @override
@@ -275,6 +419,10 @@ class _DotWindowState extends State<DotWindow> with WindowListener {
       // so Windows enforces SM_CYMINTRACK (~36px) as minimum height.
       // Now that minimumSize is set, the correct 30px height is allowed.
       await windowManager.setSize(initialWindowSize);
+      // Keep the full transition range available so opening/closing only needs
+      // one native bounds update instead of extra platform-channel calls.
+      await windowManager.setMinimumSize(initialWindowSize);
+      await windowManager.setMaximumSize(expandedWindowSize);
 
       windowManager.addListener(this);
 
@@ -283,18 +431,48 @@ class _DotWindowState extends State<DotWindow> with WindowListener {
         color: Colors.transparent,
       );
       await windowManager.show();
-      await windowManager.setIgnoreMouseEvents(true, forward: true);
+      await _setWindowInteractive(false);
     });
   }
 
   @override
   void dispose() {
+    _disposed = true;
     _exitDebounce?.cancel();
-    _transcriptSubscription?.cancel();
+    _settingsTransition.dispose();
+    _settingsTransitionController.dispose();
+    // Cancel transcript finalization immediately. `_disposed` prevents the
+    // stop path from saving or pasting any provisional value.
+    final sessionDisposal = _endSession();
+    unawaited(
+      _disposeRecordingResources(
+        _startRecordingFuture,
+        _stopRecordingFuture,
+        sessionDisposal,
+      ),
+    );
     _shortcutHelper.dispose();
-    _audioService.dispose();
     windowManager.removeListener(this);
     super.dispose();
+  }
+
+  Future<void> _disposeRecordingResources(
+    Future<void>? startFuture,
+    Future<void>? stopFuture,
+    Future<void> sessionDisposal,
+  ) async {
+    try {
+      await startFuture;
+    } catch (_) {}
+    try {
+      await stopFuture;
+    } catch (_) {}
+    await sessionDisposal;
+    await _endSession();
+    try {
+      await _audioService.forceReset();
+    } catch (_) {}
+    _audioService.dispose();
   }
 
   BoxDecoration? getWindowBoxDecoration() {
@@ -305,125 +483,202 @@ class _DotWindowState extends State<DotWindow> with WindowListener {
   }
 
   Widget _buildDragHandle() {
+    final canShow = _canShowDragHandle;
     return DragHandle(
-      dragging: _dragging,
-      showWindowContent: _showWindowContent,
+      dragging: canShow && _dragging,
+      showWindowContent: canShow && _showWindowContent,
     );
   }
 
+  bool get _canShowDragHandle =>
+      _indicatorState == IndicatorState.idle ||
+      _indicatorState == IndicatorState.expanded;
+
   void _updateIndicatorHoveringState() {
+    if (_hoveringIndicator && (!_canShowDragHandle || _showWindowContent)) {
+      return;
+    }
     setState(() {
       _hoveringIndicator = true;
-      _showWindowContent = true;
+      if (_canShowDragHandle) {
+        _showWindowContent = true;
+      }
     });
   }
 
-  void onHoverIndicator(PointerHoverEvent event) {
-    setState(() {
-      _pointerX = event.localPosition.dx;
-      _pointerY = event.localPosition.dy;
-    });
+  void onHoverIndicator(PointerHoverEvent _) {
     _updateIndicatorHoveringState();
+    if (_canShowDragHandle) {
+      unawaited(_setWindowInteractive(true));
+    }
   }
 
-  void onMouseEnterIndicator(PointerEnterEvent event) {
+  void onMouseEnterIndicator(PointerEnterEvent _) {
     _updateIndicatorHoveringState();
-    _activateWindow();
+    if (_canShowDragHandle) {
+      unawaited(_setWindowInteractive(true));
+    }
   }
 
-  void onMouseExitIndicator(PointerExitEvent event) {
+  void onMouseExitIndicator(PointerExitEvent _) {
     setState(() => _hoveringIndicator = false);
   }
 
-  void onMouseEnterWindow(PointerEnterEvent event) {
+  void onMouseEnterWindow(PointerEnterEvent _) {
     _exitDebounce?.cancel();
-    setState(() => _hoveringWindow = true);
   }
 
-  Future<void> _activateWindow() async {
-    await windowManager.setIgnoreMouseEvents(false);
-  }
-
-  void onMouseExitWindow(PointerExitEvent event) {
-    setState(() => _hoveringWindow = false);
-    if (_indicatorState != IndicatorState.expanded && !_dragging) {
-      _exitDebounce?.cancel();
-      _exitDebounce = Timer(const Duration(milliseconds: 150), () {
-        if (!_dragging && mounted) {
-          setState(() {
-            _hoveringIndicator = false;
-            _showWindowContent = false;
-          });
-          _deactivateWindow();
-        }
-      });
+  void onMouseExitWindow(PointerExitEvent _) {
+    if (_indicatorState == IndicatorState.expanded ||
+        _dragging ||
+        _settingsTransitioning) {
+      return;
     }
+
+    // A transparent -> interactive Win32 transition can briefly emit a stale
+    // leave followed by an enter while the cursor is still inside. Keep the UI
+    // stable across that transient pair; a real exit has no matching enter and
+    // therefore reaches this callback after the debounce.
+    _exitDebounce?.cancel();
+    _exitDebounce = Timer(const Duration(milliseconds: 150), () {
+      if (!mounted || _dragging || _indicatorState == IndicatorState.expanded) {
+        return;
+      }
+      setState(() {
+        _hoveringIndicator = false;
+        _showWindowContent = false;
+      });
+      unawaited(_setWindowInteractive(false));
+    });
   }
 
-  Future<void> _deactivateWindow() async {
-    await windowManager.setIgnoreMouseEvents(true, forward: true);
+  Future<void> _setWindowInteractive(bool interactive) async {
+    _desiredWindowInteractive = interactive;
+    if (_updatingWindowInteraction) return;
+
+    _updatingWindowInteraction = true;
+    try {
+      while (_windowInteractive != _desiredWindowInteractive) {
+        final target = _desiredWindowInteractive;
+        try {
+          await windowManager.setIgnoreMouseEvents(!target, forward: !target);
+          _windowInteractive = target;
+        } catch (e) {
+          dprint('Failed to update window interaction: $e');
+          return;
+        }
+      }
+    } finally {
+      _updatingWindowInteraction = false;
+    }
   }
 
   Future<void> _handleToggleSettingsBox() async {
+    if (_settingsTransitioning) return;
+    _settingsTransitioning = true;
     final isExpanded = _indicatorState == IndicatorState.expanded;
 
-    // Use actual window bounds to avoid DPI/OS rounding discrepancies
-    final currentPos = await windowManager.getPosition();
-    final currentSize = await windowManager.getSize();
-    final Size targetSize;
-    if (isExpanded) {
-      // Collapsing: use the actual idle size (may differ from nominal due to OS constraints)
-      targetSize = _actualIdleSize;
-    } else {
-      // Expanding: save actual idle size before growing
-      _actualIdleSize = currentSize;
-      targetSize = expandedWindowSize;
+    try {
+      // Use actual bounds to preserve the exact bottom edge across DPI and OS
+      // rounding instead of relying on the nominal idle size.
+      final currentPos = await windowManager.getPosition();
+      final currentSize = await windowManager.getSize();
+      final Size targetSize;
+      if (isExpanded) {
+        targetSize = _actualIdleSize;
+      } else {
+        _actualIdleSize = currentSize;
+        targetSize = expandedWindowSize;
+      }
+
+      final newTop = currentPos.dy + currentSize.height - targetSize.height;
+      final bounds = Rect.fromLTWH(
+        currentPos.dx,
+        newTop,
+        targetSize.width,
+        targetSize.height,
+      );
+
+      if (!mounted) return;
+      if (isExpanded) {
+        await _collapseSettingsBox(bounds);
+      } else {
+        await _expandSettingsBox(bounds);
+      }
+    } catch (e) {
+      dprint('Settings transition failed: $e');
+    } finally {
+      _settingsTransitioning = false;
     }
+  }
 
-    // Keep the bottom edge pinned at the same screen position
-    final newTop = currentPos.dy + currentSize.height - targetSize.height;
-    final bounds = Rect.fromLTWH(
-      currentPos.dx,
-      newTop,
-      targetSize.width,
-      targetSize.height,
-    );
-
-    if (!mounted) return;
-    setState(() {
-      _settingsBoxVisible = !isExpanded;
-      _indicatorState = isExpanded ? IndicatorState.idle : IndicatorState.expanded;
-    });
-
-    // Hide window during resize to prevent visual flash & overflow
-    // (setBounds is not visually atomic on Windows — position and size
-    //  may apply in separate frames, causing a brief glitch).
-    await windowManager.setOpacity(0);
-
-    // Relax constraints to allow target size, then set bounds atomically.
-    // Locking min=max after setBounds can trigger Windows to re-adjust position.
-    await windowManager.setMinimumSize(initialWindowSize);
-    await windowManager.setMaximumSize(expandedWindowSize);
+  Future<void> _expandSettingsBox(Rect bounds) async {
+    // Resize first while only the bottom-pinned indicator is painted. The new
+    // area is transparent, so the geometry change itself has nothing to flash.
     await windowManager.setBounds(bounds);
+    await _waitForNextFrame();
+    if (!mounted) return;
 
-    await windowManager.setOpacity(1);
+    _settingsTransitionController.value = 0;
+    setState(() {
+      _settingsBoxVisible = true;
+      _indicatorState = IndicatorState.expanded;
+    });
+    await _setWindowInteractive(true);
 
-    // Restore click-through after collapsing back to idle
-    if (isExpanded) {
-      await windowManager.setIgnoreMouseEvents(true, forward: true);
+    // Build and lay out the panel at opacity zero before its first visible
+    // animation frame.
+    await _waitForNextFrame();
+    if (!mounted) return;
+    await _settingsTransitionController.forward().orCancel;
+  }
+
+  Future<void> _collapseSettingsBox(Rect bounds) async {
+    // Morph the indicator back while the panel fades toward its anchor.
+    setState(() => _indicatorState = IndicatorState.idle);
+    await _settingsTransitionController.reverse().orCancel;
+    if (!mounted) return;
+
+    setState(() => _settingsBoxVisible = false);
+    await _waitForNextFrame();
+    if (!mounted) return;
+
+    // Once only the indicator remains, shrinking the transparent HWND cannot
+    // expose a clipped SettingsBox frame.
+    await windowManager.setBounds(bounds);
+    await _waitForNextFrame();
+    if (!await _isCursorInsideWindow()) {
+      await _setWindowInteractive(false);
     }
+  }
+
+  Future<bool> _isCursorInsideWindow() async {
+    try {
+      final diagnostics = await windowManager.getMouseDiagnostics();
+      if (diagnostics.isEmpty) return _hoveringIndicator;
+      return diagnostics['cursorInside'] == true;
+    } catch (_) {
+      // Non-Windows implementations may not expose native diagnostics.
+      return _hoveringIndicator;
+    }
+  }
+
+  Future<void> _waitForNextFrame() async {
+    if (!mounted) return;
+    final binding = WidgetsBinding.instance;
+    binding.scheduleFrame();
+    await binding.endOfFrame;
   }
 
   bool _canToggleSettingsBox() {
-    return _indicatorState == IndicatorState.idle ||
-        _indicatorState == IndicatorState.expanded;
+    return !_settingsTransitioning &&
+        (_indicatorState == IndicatorState.idle ||
+            _indicatorState == IndicatorState.expanded);
   }
 
   void onIndicatorTap() {
-    if (!_canToggleSettingsBox()) {
-      return;
-    }
-    _handleToggleSettingsBox();
+    if (!_canToggleSettingsBox()) return;
+    unawaited(_handleToggleSettingsBox());
   }
 
   void _onRecordingStarted() {
@@ -471,6 +726,7 @@ class _DotWindowState extends State<DotWindow> with WindowListener {
             if (_settingsBoxVisible)
               SettingsBox(
                 expandedWindowSize: expandedWindowSize,
+                transitionAnimation: _settingsTransition,
                 onHotkeyChanged: _onHotkeyChanged,
                 onRecordingStarted: _onRecordingStarted,
                 historyRepository: _historyRepository,
@@ -491,15 +747,17 @@ class _DotWindowState extends State<DotWindow> with WindowListener {
                       _buildDragHandle(),
                       ListenableBuilder(
                         listenable: _audioService,
-                        builder: (context, _) => DotIndicator(
-                          state: _indicatorState,
-                          onTap: onIndicatorTap,
-                          onEnter: onMouseEnterIndicator,
-                          onExit: onMouseExitIndicator,
-                          onHover: onHoverIndicator,
-                          volume: _audioService.amplitude,
-                          isHovered: _hoveringIndicator,
-                        ),
+                        builder:
+                            (context, _) => DotIndicator(
+                              state: _indicatorState,
+                              onTap: onIndicatorTap,
+                              onEnter: onMouseEnterIndicator,
+                              onExit: onMouseExitIndicator,
+                              onHover: onHoverIndicator,
+                              volume: _audioService.amplitude,
+                              spectrumFrame: _audioService.spectrumFrame,
+                              isHovered: _hoveringIndicator,
+                            ),
                       ),
                     ],
                   ),

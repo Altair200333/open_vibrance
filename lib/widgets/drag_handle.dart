@@ -128,8 +128,7 @@ class _DragHandleState extends State<DragHandle>
     final dt = switch (_lastTickTime) {
       final last? => (elapsed - last).inMicroseconds / 1e6,
       null => 0.016,
-    }
-        .clamp(0.001, 0.033);
+    }.clamp(0.001, 0.033);
     _lastTickTime = elapsed;
 
     // Semi-implicit Euler integration
@@ -159,11 +158,17 @@ class _DragHandleState extends State<DragHandle>
       child: ScaleTransition(
         scale: _curved,
         child: GestureDetector(
-          onPanStart: (details) => windowManager.startDragging(),
+          onPanStart: (_) {
+            unawaited(windowManager.startDragging());
+          },
           child: MouseRegion(
             cursor: SystemMouseCursors.click,
-            onEnter: (_) => setState(() => _hovering = true),
-            onExit: (_) => setState(() => _hovering = false),
+            onEnter: (_) {
+              setState(() => _hovering = true);
+            },
+            onExit: (_) {
+              setState(() => _hovering = false);
+            },
             child: AnimatedScale(
               scale: isHandleActive ? 1.1 : 1.0,
               duration: kHoverDuration,
