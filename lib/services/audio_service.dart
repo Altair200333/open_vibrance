@@ -2,18 +2,35 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
+import 'package:open_vibrance/services/audio_spectrum_analyzer.dart';
 import 'package:record/record.dart';
+
+/// Creates the best-effort spectrum observer for a PCM sample rate.
+typedef AudioSpectrumAnalyzerFactory =
+    AudioSpectrumAnalyzer Function(int sampleRate);
 
 /// Service to handle audio recording logic.
 class AudioService extends ChangeNotifier {
-  AudioService({AudioRecorder? recorder})
-    : _recorder = recorder ?? AudioRecorder();
+  AudioService({
+    AudioRecorder? recorder,
+    AudioSpectrumAnalyzerFactory? spectrumAnalyzerFactory,
+  }) : _recorder = recorder ?? AudioRecorder(),
+       _spectrumAnalyzerFactory =
+           spectrumAnalyzerFactory ??
+           ((sampleRate) => AudioSpectrumAnalyzer(sampleRate: sampleRate));
 
   static const _pcmDrainTimeout = Duration(seconds: 2);
+  static const amplitudeUpdateInterval = Duration(milliseconds: 50);
+  static const silenceDb = -160.0;
 
   final AudioRecorder _recorder;
+  final AudioSpectrumAnalyzerFactory _spectrumAnalyzerFactory;
   StreamSubscription<Amplitude>? _amplitudeSubscription;
-  double _amplitude = 0.0;
+  double _amplitude = silenceDb;
+  AudioSpectrumAnalyzer? _spectrumAnalyzer;
+  AudioSpectrumFrame _spectrumFrame = AudioSpectrumFrame.unavailable;
+  bool _spectrumDisabled = false;
+  bool _disposed = false;
 
   // Streaming fields
   final BytesBuilder _pcmBuffer = BytesBuilder(copy: false);
@@ -25,6 +42,7 @@ class AudioService extends ChangeNotifier {
 
   /// Current amplitude in dB.
   double get amplitude => _amplitude;
+  AudioSpectrumFrame get spectrumFrame => _spectrumFrame;
 
   /// Checks if microphone permission is granted.
   Future<bool> hasPermission() => _recorder.hasPermission();
@@ -32,6 +50,7 @@ class AudioService extends ChangeNotifier {
   /// Starts recording audio and listens for amplitude changes.
   /// If [path] is provided, records to that path; otherwise uses a temp file.
   Future<void> start({String? path}) async {
+    _resetMeter();
     final granted = await _recorder.hasPermission();
     if (!granted) {
       throw Exception('Microphone permission denied');
@@ -45,10 +64,10 @@ class AudioService extends ChangeNotifier {
       path: recordingPath,
     );
     _amplitudeSubscription = _recorder
-        .onAmplitudeChanged(const Duration(milliseconds: 100))
+        .onAmplitudeChanged(amplitudeUpdateInterval)
         .listen((amplitude) {
           _amplitude = amplitude.current;
-          notifyListeners();
+          _notifyMeterListeners();
         });
   }
 
@@ -57,18 +76,26 @@ class AudioService extends ChangeNotifier {
     final path = await _recorder.stop();
     await _amplitudeSubscription?.cancel();
     _amplitudeSubscription = null;
-    notifyListeners();
+    _resetMeter();
     return path;
   }
 
   /// Starts streaming recording. Returns a `Stream<Uint8List>` of raw PCM chunks.
   /// Chunks are also accumulated internally for WAV file construction on stop.
   Future<Stream<Uint8List>> startStreaming({int sampleRate = 16000}) async {
+    _resetMeter();
     final granted = await _recorder.hasPermission();
     if (!granted) throw Exception('Microphone permission denied');
 
     _streamSampleRate = sampleRate;
     _pcmBuffer.clear();
+    try {
+      _spectrumAnalyzer = _spectrumAnalyzerFactory(sampleRate);
+      _spectrumDisabled = false;
+    } catch (_) {
+      _spectrumAnalyzer = null;
+      _spectrumDisabled = true;
+    }
 
     final rawStream = await _recorder.startStream(
       RecordConfig(
@@ -90,9 +117,19 @@ class AudioService extends ChangeNotifier {
         if (!controller.isClosed) {
           controller.add(chunk);
         }
+        // Visualization is an observer only: transcription and WAV buffering
+        // always receive the original chunk before any best-effort DSP work.
+        if (!_spectrumDisabled) {
+          try {
+            _spectrumAnalyzer?.addPcm16(chunk, _onSpectrumFrame);
+          } catch (_) {
+            _disableSpectrum();
+          }
+        }
       },
       onError: (Object error, StackTrace stackTrace) {
         _pcmStreamError ??= error;
+        _disableSpectrum();
         if (!controller.isClosed) {
           controller.addError(error, stackTrace);
         }
@@ -111,10 +148,12 @@ class AudioService extends ChangeNotifier {
 
     // Amplitude monitoring
     _amplitudeSubscription = _recorder
-        .onAmplitudeChanged(const Duration(milliseconds: 100))
+        .onAmplitudeChanged(amplitudeUpdateInterval)
         .listen((a) {
           _amplitude = a.current;
-          notifyListeners();
+          if (!_spectrumFrame.hasSpectrum) {
+            _notifyMeterListeners();
+          }
         });
 
     return _pcmController!.stream;
@@ -144,6 +183,7 @@ class AudioService extends ChangeNotifier {
     _pcmDrainCompleter = null;
     await _amplitudeSubscription?.cancel();
     _amplitudeSubscription = null;
+    _resetMeter();
 
     final streamError = _pcmStreamError;
     _pcmStreamError = null;
@@ -158,8 +198,41 @@ class AudioService extends ChangeNotifier {
     final wavBytes = _buildWav(pcmBytes, sampleRate: _streamSampleRate);
     await File(path).writeAsBytes(wavBytes);
 
-    notifyListeners();
     return path;
+  }
+
+  void _onSpectrumFrame(AudioSpectrumFrame frame) {
+    if (_disposed || _spectrumDisabled) return;
+    _spectrumFrame = frame;
+    _notifyMeterListeners();
+  }
+
+  void _disableSpectrum() {
+    if (_spectrumDisabled) return;
+    final hadSpectrum = _spectrumFrame.hasSpectrum;
+    _spectrumDisabled = true;
+    try {
+      _spectrumAnalyzer?.reset();
+    } catch (_) {}
+    _spectrumFrame = AudioSpectrumFrame.unavailable;
+    if (hadSpectrum) _notifyMeterListeners();
+  }
+
+  void _resetMeter() {
+    final changed = _amplitude != silenceDb || _spectrumFrame.hasSpectrum;
+    _amplitude = silenceDb;
+    _spectrumFrame = AudioSpectrumFrame.unavailable;
+    _spectrumDisabled = false;
+    try {
+      _spectrumAnalyzer?.reset();
+    } catch (_) {
+      _spectrumDisabled = true;
+    }
+    if (changed) _notifyMeterListeners();
+  }
+
+  void _notifyMeterListeners() {
+    if (!_disposed) notifyListeners();
   }
 
   Future<void> _closeControllerIgnoringErrors(
@@ -252,12 +325,18 @@ class AudioService extends ChangeNotifier {
       await _amplitudeSubscription?.cancel();
     } catch (_) {}
     _amplitudeSubscription = null;
-    _amplitude = 0.0;
-    notifyListeners();
+    _resetMeter();
   }
 
   @override
   void dispose() {
+    _disposed = true;
+    _spectrumDisabled = true;
+    try {
+      _spectrumAnalyzer?.reset();
+    } catch (_) {}
+    _spectrumAnalyzer = null;
+    _spectrumFrame = AudioSpectrumFrame.unavailable;
     final pcmSubscription = _pcmSubscription;
     if (pcmSubscription != null) {
       unawaited(_cancelSubscriptionIgnoringErrors(pcmSubscription));

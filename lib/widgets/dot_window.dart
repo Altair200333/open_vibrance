@@ -755,6 +755,7 @@ class _DotWindowState extends State<DotWindow>
                               onExit: onMouseExitIndicator,
                               onHover: onHoverIndicator,
                               volume: _audioService.amplitude,
+                              spectrumFrame: _audioService.spectrumFrame,
                               isHovered: _hoveringIndicator,
                             ),
                       ),

@@ -1,5 +1,8 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:open_vibrance/services/audio_spectrum_analyzer.dart';
 import 'package:open_vibrance/theme/app_color_theme.dart';
 import 'package:open_vibrance/widgets/constants.dart';
 import 'package:open_vibrance/widgets/dot_indicator/recording_dot.dart';
@@ -9,10 +12,33 @@ import 'package:open_vibrance/widgets/dot_indicator/error_shake.dart';
 
 enum IndicatorState { idle, recording, transcribing, error, expanded }
 
-const double kDotIndicatorMinScale = 0.4;
-const double kDotIndicatorMaxScale = 1;
-const double kMinVolumeDb = -60.0;
-const double kMaxVolumeDb = 0.0;
+const double kMinVolumeDb = -55.0;
+const double kMaxVolumeDb = -8.0;
+const double _kVolumeKneeDb = 6.0;
+const double _kVolumeResponseExponent = 0.68;
+
+double recordingLevelFromDb(double volumeDb) {
+  if (volumeDb.isNaN || volumeDb == double.negativeInfinity) return 0;
+  if (volumeDb == double.infinity) return 1;
+
+  final linear =
+      ((volumeDb - kMinVolumeDb) / (kMaxVolumeDb - kMinVolumeDb))
+          .clamp(0.0, 1.0)
+          .toDouble();
+  if (linear == 0 || linear == 1) return linear;
+
+  // Suppress the noise floor without creating a hard jump when quiet speech
+  // crosses it. Above the knee, the voice response is intentionally fuller
+  // than a linear dB mapping.
+  var gated = linear;
+  if (volumeDb < kMinVolumeDb + _kVolumeKneeDb) {
+    final knee =
+        ((volumeDb - kMinVolumeDb) / _kVolumeKneeDb).clamp(0.0, 1.0).toDouble();
+    final smoothKnee = knee * knee * (3 - 2 * knee);
+    gated *= smoothKnee;
+  }
+  return math.pow(gated, _kVolumeResponseExponent).toDouble();
+}
 
 /// A circular indicator widget that changes appearance based on [IndicatorState].
 class DotIndicator extends StatefulWidget {
@@ -22,6 +48,7 @@ class DotIndicator extends StatefulWidget {
   final PointerExitEventListener onExit;
   final PointerHoverEventListener onHover;
   final double volume;
+  final AudioSpectrumFrame spectrumFrame;
   final bool isHovered;
 
   const DotIndicator({
@@ -32,15 +59,15 @@ class DotIndicator extends StatefulWidget {
     required this.onExit,
     required this.onHover,
     required this.volume,
+    required this.spectrumFrame,
     required this.isHovered,
   });
 
   @override
-  _DotIndicatorState createState() => _DotIndicatorState();
+  State<DotIndicator> createState() => _DotIndicatorState();
 
   double _getNormalizedVolume() {
-    final normalized = (volume - kMinVolumeDb) / (kMaxVolumeDb - kMinVolumeDb);
-    return normalized.clamp(0.0, 1.0);
+    return recordingLevelFromDb(volume);
   }
 
   double get _indicatorDotWidth {
@@ -53,8 +80,6 @@ class DotIndicator extends StatefulWidget {
         return kDotSize * 2.5;
       case IndicatorState.idle:
         return isHovered ? kDotSize * 2.5 : kDotSize * 2;
-      default:
-        return kDotSize * 2;
     }
   }
 
@@ -68,8 +93,6 @@ class DotIndicator extends StatefulWidget {
         return kDotSize;
       case IndicatorState.idle:
         return isHovered ? kDotSize : kDotSize * 0.5;
-      default:
-        return kDotSize * 0.5;
     }
   }
 
@@ -80,13 +103,7 @@ class DotIndicator extends StatefulWidget {
 
     switch (state) {
       case IndicatorState.recording:
-        var borderW = 1 + _getNormalizedVolume() * 2;
-        return BoxDecoration(
-          color: colors.errorBg,
-          borderRadius: BorderRadius.circular(kDotSize),
-          border: Border.all(color: colors.textOnPrimary, width: borderW),
-          boxShadow: shadow,
-        );
+        throw StateError('Recording state is painted by RecordingDot');
       case IndicatorState.transcribing:
         return BoxDecoration(
           color: colors.surfaceElevated,
@@ -114,15 +131,6 @@ class DotIndicator extends StatefulWidget {
           borderRadius: BorderRadius.circular(isHovered ? 5 : 10),
           border: Border.all(color: colors.textOnPrimary, width: 2),
           boxShadow: shadow,
-        );
-      default:
-        return BoxDecoration(
-          color: colors.border,
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(
-            color: colors.textOnPrimary.withAlpha(180),
-            width: 1.5,
-          ),
         );
     }
   }
@@ -154,24 +162,17 @@ class _DotIndicatorState extends State<DotIndicator> {
         );
       case IndicatorState.idle:
         return IdleDots(isHovered: widget.isHovered);
-      default:
-        return null;
     }
   }
 
   Widget _buildIndicator(double width, double height, AppColorTheme colors) {
     if (widget.state == IndicatorState.recording) {
-      // normalize volume to 0.0-1.0 based on dB range
       final normalized = widget._getNormalizedVolume();
-
-      // map normalized to scale range
-      final sizeScale =
-          kDotIndicatorMinScale +
-          normalized * (kDotIndicatorMaxScale - kDotIndicatorMinScale);
-
       return RecordingDot(
-        scale: sizeScale,
-        decoration: widget._indicatorDotDecoration(colors),
+        level: normalized,
+        spectrumFrame: widget.spectrumFrame,
+        fillColor: colors.errorBg,
+        borderColor: colors.textOnPrimary,
       );
     }
     final container = AnimatedContainer(

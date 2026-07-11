@@ -45,4 +45,6 @@ app.*.map.json
 /android/app/release
 *.wav
 NUL
-/docs
+/docs/*
+!/docs/architecture/
+!/docs/architecture/**
