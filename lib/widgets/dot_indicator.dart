@@ -18,8 +18,6 @@ const double kMaxVolumeDb = 0.0;
 class DotIndicator extends StatefulWidget {
   final IndicatorState state;
   final VoidCallback onTap;
-  final GestureTapDownCallback? onTapDown;
-  final VoidCallback? onTapCancel;
   final PointerEnterEventListener onEnter;
   final PointerExitEventListener onExit;
   final PointerHoverEventListener onHover;
@@ -30,8 +28,6 @@ class DotIndicator extends StatefulWidget {
     super.key,
     required this.state,
     required this.onTap,
-    this.onTapDown,
-    this.onTapCancel,
     required this.onEnter,
     required this.onExit,
     required this.onHover,
@@ -200,8 +196,6 @@ class _DotIndicatorState extends State<DotIndicator> {
     final height = widget._indicatorDotHeight;
     return GestureDetector(
       onTap: widget.onTap,
-      onTapDown: widget.onTapDown,
-      onTapCancel: widget.onTapCancel,
       child: MouseRegion(
         cursor: SystemMouseCursors.click,
         onEnter: widget.onEnter,

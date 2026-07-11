@@ -20,15 +20,11 @@ const double _springEpsilon = 0.01;
 class DragHandle extends StatefulWidget {
   final bool dragging;
   final bool showWindowContent;
-  final ValueChanged<bool>? onHoverChanged;
-  final VoidCallback? onDragStart;
 
   const DragHandle({
     super.key,
     required this.dragging,
     required this.showWindowContent,
-    this.onHoverChanged,
-    this.onDragStart,
   });
 
   @override
@@ -163,18 +159,15 @@ class _DragHandleState extends State<DragHandle>
         scale: _curved,
         child: GestureDetector(
           onPanStart: (_) {
-            widget.onDragStart?.call();
             unawaited(windowManager.startDragging());
           },
           child: MouseRegion(
             cursor: SystemMouseCursors.click,
             onEnter: (_) {
               setState(() => _hovering = true);
-              widget.onHoverChanged?.call(true);
             },
             onExit: (_) {
               setState(() => _hovering = false);
-              widget.onHoverChanged?.call(false);
             },
             child: AnimatedScale(
               scale: isHandleActive ? 1.1 : 1.0,

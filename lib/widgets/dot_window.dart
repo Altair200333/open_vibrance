@@ -50,9 +50,6 @@ class _DotWindowState extends State<DotWindow> with WindowListener {
   bool? _windowInteractive;
   bool _desiredWindowInteractive = false;
   bool _updatingWindowInteraction = false;
-  final Stopwatch _mouseTraceClock = Stopwatch()..start();
-  int _mouseTraceSequence = 0;
-  Duration _lastHoverTraceAt = Duration.zero;
 
   @override
   void initState() {
@@ -337,11 +334,7 @@ class _DotWindowState extends State<DotWindow> with WindowListener {
       !_disposed && _indicatorState == IndicatorState.recording;
 
   void _onStartRecording() {
-    if (!_canStartRecording()) {
-      _mouseTrace('recording.start.ignored');
-      return;
-    }
-    _mouseTraceWithNative('recording.start');
+    if (!_canStartRecording()) return;
     _exitDebounce?.cancel();
     setState(() {
       _indicatorState = IndicatorState.recording;
@@ -372,14 +365,12 @@ class _DotWindowState extends State<DotWindow> with WindowListener {
   @override
   void onWindowMoved() {
     setState(() => _dragging = false);
-    _mouseTraceWithNative('window.moved');
   }
 
   @override
   void onWindowMove() {
     _exitDebounce?.cancel();
     if (!_dragging) {
-      _mouseTrace('window.move');
       setState(() => _dragging = true);
     }
   }
@@ -467,46 +458,11 @@ class _DotWindowState extends State<DotWindow> with WindowListener {
     );
   }
 
-  void _mouseTrace(String event, {String details = ''}) {
-    final sequence = (++_mouseTraceSequence).toString().padLeft(3, '0');
-    final elapsed = _mouseTraceClock.elapsedMilliseconds.toString().padLeft(
-      6,
-      '0',
-    );
-    final suffix = details.isEmpty ? '' : ' $details';
-    dprint(
-      '[mouse #$sequence +${elapsed}ms] $event$suffix | '
-      'state=${_indicatorState.name} dragging=$_dragging '
-      'indicatorHover=$_hoveringIndicator handle=$_showWindowContent '
-      'desiredInteractive=$_desiredWindowInteractive '
-      'appliedInteractive=$_windowInteractive '
-      'modeUpdate=$_updatingWindowInteraction',
-    );
-  }
-
-  void _mouseTraceWithNative(String event, {String details = ''}) {
-    _mouseTrace(event, details: details);
-    unawaited(_traceNativeMouse(event));
-  }
-
-  Future<void> _traceNativeMouse(String cause) async {
-    try {
-      final diagnostics = await windowManager.getMouseDiagnostics();
-      _mouseTrace('native.$cause', details: diagnostics.toString());
-    } catch (e) {
-      _mouseTrace('native.$cause.error', details: '$e');
-    }
-  }
-
   Widget _buildDragHandle() {
     final canShow = _canShowDragHandle;
     return DragHandle(
       dragging: canShow && _dragging,
       showWindowContent: canShow && _showWindowContent,
-      onHoverChanged: (hovering) {
-        _mouseTrace(hovering ? 'handle.enter' : 'handle.exit');
-      },
-      onDragStart: () => _mouseTraceWithNative('handle.dragStart'),
     );
   }
 
@@ -526,47 +482,30 @@ class _DotWindowState extends State<DotWindow> with WindowListener {
     });
   }
 
-  void onHoverIndicator(PointerHoverEvent event) {
-    _updateIndicatorHoveringState();
-    final elapsed = _mouseTraceClock.elapsed;
-    if (_windowInteractive != true &&
-        elapsed - _lastHoverTraceAt >= const Duration(milliseconds: 250)) {
-      _lastHoverTraceAt = elapsed;
-      _mouseTrace('indicator.hover', details: 'local=${event.localPosition}');
-    }
-    if (_canShowDragHandle) {
-      unawaited(_setWindowInteractive(true));
-    }
-  }
-
-  void onMouseEnterIndicator(PointerEnterEvent event) {
-    _mouseTrace('indicator.enter', details: 'local=${event.localPosition}');
+  void onHoverIndicator(PointerHoverEvent _) {
     _updateIndicatorHoveringState();
     if (_canShowDragHandle) {
       unawaited(_setWindowInteractive(true));
     }
   }
 
-  void onMouseExitIndicator(PointerExitEvent event) {
-    _mouseTrace('indicator.exit', details: 'local=${event.localPosition}');
+  void onMouseEnterIndicator(PointerEnterEvent _) {
+    _updateIndicatorHoveringState();
+    if (_canShowDragHandle) {
+      unawaited(_setWindowInteractive(true));
+    }
+  }
+
+  void onMouseExitIndicator(PointerExitEvent _) {
     setState(() => _hoveringIndicator = false);
   }
 
-  void onMouseEnterWindow(PointerEnterEvent event) {
+  void onMouseEnterWindow(PointerEnterEvent _) {
     _exitDebounce?.cancel();
-    _mouseTraceWithNative(
-      'window.enter',
-      details: 'local=${event.localPosition}',
-    );
   }
 
-  void onMouseExitWindow(PointerExitEvent event) {
-    _mouseTraceWithNative(
-      'window.exit',
-      details: 'local=${event.localPosition}',
-    );
+  void onMouseExitWindow(PointerExitEvent _) {
     if (_indicatorState == IndicatorState.expanded || _dragging) {
-      _mouseTrace('window.exit.ignored');
       return;
     }
 
@@ -588,31 +527,18 @@ class _DotWindowState extends State<DotWindow> with WindowListener {
   }
 
   Future<void> _setWindowInteractive(bool interactive) async {
-    final previousDesired = _desiredWindowInteractive;
     _desiredWindowInteractive = interactive;
-    final desiredChanged = previousDesired != interactive;
-    if (desiredChanged) {
-      _mouseTrace('mode.request', details: 'interactive=$interactive');
-    }
-    if (_updatingWindowInteraction) {
-      if (desiredChanged) {
-        _mouseTrace('mode.queued', details: 'interactive=$interactive');
-      }
-      return;
-    }
+    if (_updatingWindowInteraction) return;
 
     _updatingWindowInteraction = true;
     try {
       while (_windowInteractive != _desiredWindowInteractive) {
         final target = _desiredWindowInteractive;
-        _mouseTrace('mode.apply.begin', details: 'interactive=$target');
         try {
           await windowManager.setIgnoreMouseEvents(!target, forward: !target);
           _windowInteractive = target;
-          _mouseTrace('mode.apply.done', details: 'interactive=$target');
-          unawaited(_traceNativeMouse('mode.$target'));
         } catch (e) {
-          _mouseTrace('mode.apply.error', details: '$e');
+          dprint('Failed to update window interaction: $e');
           return;
         }
       }
@@ -623,10 +549,6 @@ class _DotWindowState extends State<DotWindow> with WindowListener {
 
   Future<void> _handleToggleSettingsBox() async {
     final isExpanded = _indicatorState == IndicatorState.expanded;
-    _mouseTraceWithNative(
-      'menu.toggle.begin',
-      details: isExpanded ? 'collapse' : 'expand',
-    );
 
     // Use actual window bounds to avoid DPI/OS rounding discrepancies
     final currentPos = await windowManager.getPosition();
@@ -673,10 +595,6 @@ class _DotWindowState extends State<DotWindow> with WindowListener {
     if (isExpanded) {
       await _setWindowInteractive(false);
     }
-    _mouseTraceWithNative(
-      'menu.toggle.done',
-      details: isExpanded ? 'collapsed' : 'expanded',
-    );
   }
 
   bool _canToggleSettingsBox() {
@@ -685,11 +603,7 @@ class _DotWindowState extends State<DotWindow> with WindowListener {
   }
 
   void onIndicatorTap() {
-    _mouseTraceWithNative('indicator.tap');
-    if (!_canToggleSettingsBox()) {
-      _mouseTrace('indicator.tap.ignored');
-      return;
-    }
+    if (!_canToggleSettingsBox()) return;
     _handleToggleSettingsBox();
   }
 
@@ -762,13 +676,6 @@ class _DotWindowState extends State<DotWindow> with WindowListener {
                             (context, _) => DotIndicator(
                               state: _indicatorState,
                               onTap: onIndicatorTap,
-                              onTapDown:
-                                  (details) => _mouseTrace(
-                                    'indicator.tapDown',
-                                    details: 'local=${details.localPosition}',
-                                  ),
-                              onTapCancel:
-                                  () => _mouseTrace('indicator.tapCancel'),
                               onEnter: onMouseEnterIndicator,
                               onExit: onMouseExitIndicator,
                               onHover: onHoverIndicator,
