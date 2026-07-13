@@ -9,6 +9,29 @@ import 'package:open_vibrance/transcription/elevenlabs_realtime_transcription_pr
 
 void main() {
   group('ElevenLabsRealtimeTranscriptionProvider', () {
+    test('enables native no-verbatim mode by default', () async {
+      final socket = _FakeWebSocket();
+      String? connectedUrl;
+      final provider = ElevenLabsRealtimeTranscriptionProvider(
+        'test-key',
+        connectWebSocket: (url, {headers}) {
+          connectedUrl = url;
+          return Future<WebSocket>.value(socket);
+        },
+      );
+      final pcm = StreamController<Uint8List>();
+      final subscription = provider
+          .transcribeStream(pcm.stream, sampleRate: 16000)
+          .listen((_) {});
+
+      await Future<void>.delayed(Duration.zero);
+
+      expect(Uri.parse(connectedUrl!).queryParameters['no_verbatim'], 'true');
+
+      await subscription.cancel();
+      await pcm.close();
+    });
+
     test('serializes periodic commits and uses batch final authority', () {
       fakeAsync((async) {
         final socket = _FakeWebSocket();

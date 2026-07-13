@@ -253,7 +253,8 @@ class ElevenLabsRealtimeTranscriptionProvider
       'wss://api.elevenlabs.io/v1/speech-to-text/realtime'
       '?model_id=scribe_v2_realtime'
       '&audio_format=pcm_$sampleRate'
-      '&commit_strategy=manual';
+      '&commit_strategy=manual'
+      '&no_verbatim=true';
 
   void _sendChunk(WebSocket ws, Uint8List chunk, int sampleRate) {
     if (ws.readyState != WebSocket.open) {
