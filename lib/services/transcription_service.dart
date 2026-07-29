@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:open_vibrance/transcription/custom_transcription_provider.dart';
 import 'package:open_vibrance/transcription/elevenlabs_realtime_transcription_provider.dart';
+import 'package:open_vibrance/transcription/openai_realtime_transcription_provider.dart';
 import 'package:open_vibrance/transcription/openai_transcription_provider.dart';
 import 'package:open_vibrance/transcription/streaming_transcription_provider.dart';
 import 'package:open_vibrance/transcription/transcription_provider.dart';
@@ -47,32 +48,57 @@ class TranscriptionService {
       case TranscriptionProviderKey.elevenlabs:
         return ElevenLabsTranscriptionProvider(storageService: _storageService);
       case TranscriptionProviderKey.openai:
-        return OpenAITranscriptionProvider();
+        return OpenAITranscriptionProvider(storageService: _storageService);
       case TranscriptionProviderKey.custom:
         return CustomTranscriptionProvider();
     }
   }
 
-  /// Returns a StreamingTranscriptionProvider if the active provider supports streaming.
-  /// Returns null for batch-only providers (OpenAI, Custom, non-realtime ElevenLabs).
+  /// Returns a streaming provider when the selected model supports live audio.
   Future<StreamingTranscriptionProvider?> getStreamingProvider() async {
     final providerKey = await _getSelectedProvider();
-    if (providerKey != TranscriptionProviderKey.elevenlabs) return null;
+    switch (providerKey) {
+      case TranscriptionProviderKey.elevenlabs:
+        final modelId = await _storageService.readValue(
+          StorageKey.elevenLabsModel.key,
+        );
+        final model = ElevenLabsModelExtension.fromKey(modelId);
+        if (!model.isRealtime) return null;
 
-    // Check if the selected ElevenLabs model is realtime
-    final modelId = await _storageService.readValue(
-      StorageKey.elevenLabsModel.key,
-    );
-    final model = ElevenLabsModelExtension.fromKey(modelId);
-    if (!model.isRealtime) return null;
+        final apiKey =
+            (await _storageService.readValue(
+              StorageKey.elevenLabsApiKey.key,
+            ))?.trim();
+        if (apiKey == null || apiKey.isEmpty) {
+          throw Exception('ElevenLabs API key not found');
+        }
+        return ElevenLabsRealtimeTranscriptionProvider(apiKey);
 
-    // Load API key
-    final apiKey = await _storageService.readValue(
-      StorageKey.elevenLabsApiKey.key,
-    );
-    if (apiKey == null) throw Exception('ElevenLabs API key not found');
+      case TranscriptionProviderKey.openai:
+        final modelId = await _storageService.readValue(
+          StorageKey.openAiModel.key,
+        );
+        final model = OpenAIModelExtension.fromKey(modelId);
+        if (!model.isRealtime) return null;
 
-    return ElevenLabsRealtimeTranscriptionProvider(apiKey);
+        final apiKey =
+            (await _storageService.readValue(
+              StorageKey.openAiApiKey.key,
+            ))?.trim();
+        if (apiKey == null || apiKey.isEmpty) {
+          throw Exception('OpenAI API key not found');
+        }
+        final prompt = await _storageService.readValue(
+          StorageKey.openAiPrompt.key,
+        );
+        return OpenAIRealtimeTranscriptionProvider(
+          apiKey: apiKey,
+          prompt: prompt,
+        );
+
+      case TranscriptionProviderKey.custom:
+        return null;
+    }
   }
 
   Future<String> transcribeFileAndPaste(
@@ -96,16 +122,40 @@ class TranscriptionService {
     return transcription;
   }
 
-  /// Correctness fallback for a failed realtime ElevenLabs session.
-  /// Always uses the batch Scribe v2 endpoint, regardless of the selected model.
-  Future<String> transcribeFileWithElevenLabsBatch(String path) async {
+  /// Correctness fallback for a realtime session whose finality is uncertain.
+  Future<String> transcribeFileWithBatchFallback(
+    String path,
+    TranscriptionProviderKey providerKey,
+  ) async {
     final bytes = await File(path).readAsBytes();
-    final transcription = await ElevenLabsTranscriptionProvider(
-      modelOverride: ElevenLabsModel.scribeV2,
-      storageService: _storageService,
-    ).transcribe(bytes);
-    dprint('ElevenLabs batch fallback transcription: $transcription');
+    final TranscriptionProvider provider = switch (providerKey) {
+      TranscriptionProviderKey.elevenlabs => ElevenLabsTranscriptionProvider(
+        modelOverride: ElevenLabsModel.scribeV2,
+        storageService: _storageService,
+      ),
+      TranscriptionProviderKey.openai => OpenAITranscriptionProvider(
+        modelOverride: OpenAIModel.gptTranscribe,
+        storageService: _storageService,
+      ),
+      TranscriptionProviderKey.custom =>
+        throw UnsupportedError(
+          'Custom provider has no realtime batch fallback',
+        ),
+    };
+    final transcription = await provider.transcribe(bytes);
+    dprint('${providerKey.displayName} batch fallback: $transcription');
     return transcription;
+  }
+
+  /// Applies post-processing only when it belongs to the streaming provider.
+  Future<String> filterStreamingTranscription(
+    String transcription,
+    TranscriptionProviderKey providerKey,
+  ) {
+    if (providerKey != TranscriptionProviderKey.elevenlabs) {
+      return Future<String>.value(transcription);
+    }
+    return filterRealtimeTranscription(transcription);
   }
 
   /// Cleans a completed ElevenLabs realtime transcript when the optional

@@ -7,6 +7,7 @@ import 'dart:typed_data';
 
 import 'package:open_vibrance/transcription/streaming_transcription_provider.dart';
 import 'package:open_vibrance/transcription/transcription_provider.dart';
+import 'package:open_vibrance/transcription/types.dart';
 import 'package:open_vibrance/utils/common.dart';
 
 class _WavInfo {
@@ -117,6 +118,13 @@ class _StreamingState {
 
 class ElevenLabsRealtimeTranscriptionProvider
     implements TranscriptionProvider, StreamingTranscriptionProvider {
+  @override
+  TranscriptionProviderKey get providerKey =>
+      TranscriptionProviderKey.elevenlabs;
+
+  @override
+  int get requiredSampleRate => 16000;
+
   final String _apiKey;
   final RealtimeWebSocketConnector _connectWebSocket;
   final Duration _periodicCommitInterval;

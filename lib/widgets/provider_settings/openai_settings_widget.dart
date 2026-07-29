@@ -71,11 +71,14 @@ class _OpenAiSettingsWidgetState extends State<OpenAiSettingsWidget> {
     SecureStorageService().saveValue(StorageKey.openAiApiKey.key, value);
   }
 
-  void _onOpenAiModelChanged(OpenAIModel? model) {
+  Future<void> _onOpenAiModelChanged(OpenAIModel? model) async {
     if (model == null) {
       return;
     }
-    SecureStorageService().saveValue(StorageKey.openAiModel.key, model.modelId);
+    await SecureStorageService().saveValue(
+      StorageKey.openAiModel.key,
+      model.modelId,
+    );
     if (mounted) {
       setState(() {
         _selectedOpenAiModel = model;
@@ -96,7 +99,11 @@ class _OpenAiSettingsWidgetState extends State<OpenAiSettingsWidget> {
       children: [
         Text(
           'OpenAI API key',
-          style: TextStyle(color: colors.textSecondary, fontSize: kFontSizeMd, fontWeight: FontWeight.w500),
+          style: TextStyle(
+            color: colors.textSecondary,
+            fontSize: kFontSizeMd,
+            fontWeight: FontWeight.w500,
+          ),
         ),
         SizedBox(height: 8),
         TextField(
@@ -108,7 +115,11 @@ class _OpenAiSettingsWidgetState extends State<OpenAiSettingsWidget> {
         SizedBox(height: 32),
         Text(
           'OpenAI Model',
-          style: TextStyle(color: colors.textSecondary, fontSize: kFontSizeMd, fontWeight: FontWeight.w500),
+          style: TextStyle(
+            color: colors.textSecondary,
+            fontSize: kFontSizeMd,
+            fontWeight: FontWeight.w500,
+          ),
         ),
         SizedBox(height: 8),
         Text(
@@ -120,15 +131,21 @@ class _OpenAiSettingsWidgetState extends State<OpenAiSettingsWidget> {
           child: DropdownButton2<OpenAIModel>(
             value: _selectedOpenAiModel,
             onChanged: _onOpenAiModelChanged,
-            items: OpenAIModel.values.map(
-              (model) => DropdownMenuItem<OpenAIModel>(
-                value: model,
-                child: Text(
-                  model.displayName,
-                  style: TextStyle(color: colors.textPrimary, fontSize: kFontSizeLg),
-                ),
-              ),
-            ).toList(),
+            items:
+                OpenAIModel.values
+                    .map(
+                      (model) => DropdownMenuItem<OpenAIModel>(
+                        value: model,
+                        child: Text(
+                          model.displayName,
+                          style: TextStyle(
+                            color: colors.textPrimary,
+                            fontSize: kFontSizeLg,
+                          ),
+                        ),
+                      ),
+                    )
+                    .toList(),
             buttonStyleData: AppStyles.dropdownButton(colors),
             dropdownStyleData: AppStyles.dropdownMenu(colors),
             iconStyleData: AppStyles.dropdownIcon(colors),
@@ -138,7 +155,11 @@ class _OpenAiSettingsWidgetState extends State<OpenAiSettingsWidget> {
         SizedBox(height: 32),
         Text(
           'OpenAI Prompt',
-          style: TextStyle(color: colors.textSecondary, fontSize: kFontSizeMd, fontWeight: FontWeight.w500),
+          style: TextStyle(
+            color: colors.textSecondary,
+            fontSize: kFontSizeMd,
+            fontWeight: FontWeight.w500,
+          ),
         ),
         SizedBox(height: 8),
         Text(

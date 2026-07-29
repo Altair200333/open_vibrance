@@ -95,7 +95,10 @@ class _DotWindowState extends State<DotWindow>
       if (_disposed) return;
 
       if (streamingProvider != null) {
-        final pcmStream = await _audioService.startStreaming();
+        final sampleRate = streamingProvider.requiredSampleRate;
+        final pcmStream = await _audioService.startStreaming(
+          sampleRate: sampleRate,
+        );
         if (_disposed) {
           await _audioService.forceReset();
           return;
@@ -110,7 +113,7 @@ class _DotWindowState extends State<DotWindow>
 
         // Callbacks reference `session` safely — they fire after this sync block.
         session.transcriptSubscription = streamingProvider
-            .transcribeStream(pcmStream, sampleRate: 16000)
+            .transcribeStream(pcmStream, sampleRate: sampleRate)
             .listen(
               (text) {
                 session.lastTranscript = text;
@@ -226,13 +229,14 @@ class _DotWindowState extends State<DotWindow>
         '${session.transcriptError}',
       );
       transcription = await _transcriptionService
-          .transcribeFileWithElevenLabsBatch(path);
+          .transcribeFileWithBatchFallback(path, session.provider.providerKey);
       if (_disposed || session.cancelled) return;
     }
 
     dprint('[Transcription][before-filter] $transcription');
-    transcription = await _transcriptionService.filterRealtimeTranscription(
+    transcription = await _transcriptionService.filterStreamingTranscription(
       transcription,
+      session.provider.providerKey,
     );
     dprint('[Transcription][after-filter] $transcription');
     if (_disposed || session.cancelled || !identical(_session, session)) {

@@ -21,14 +21,14 @@
 | Provider | Models |
 |----------|--------|
 | **ElevenLabs** | Scribe v1, v1 Experimental, v2, v2 Realtime (WebSocket streaming) |
-| **OpenAI** | Whisper-1, GPT-4o Mini Transcribe, GPT-4o Transcribe |
+| **OpenAI** | Whisper-1, GPT-4o Mini Transcribe, GPT-4o Transcribe, GPT Transcribe, GPT Live Transcribe (Realtime WebSocket) |
 | **Custom** | Any STT service via a Python script |
 
 OpenAI providers support a custom prompt to guide transcription style and formatting.
 
 ## Features
 
-- **Real-time streaming** — live transcription via ElevenLabs Scribe v2 Realtime
+- **Real-time streaming** — live transcription via ElevenLabs Scribe v2 Realtime or OpenAI GPT Live Transcribe
 - **Stays out of your way** — always-on-top, click-through transparent dot with state animations
 - **Auto paste** — transcribed text is copied to clipboard and pasted into the active window
 - **Transcription history** — browse past transcriptions with audio playback and one-click retry

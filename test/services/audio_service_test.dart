@@ -49,6 +49,40 @@ void main() {
       },
     );
 
+    test('records and labels GPT Live PCM at 24 kHz', () async {
+      final recorder = _DelayedTailRecorder(Uint8List.fromList(<int>[3, 4]));
+      final service = AudioService(recorder: recorder);
+      final directory = await Directory.systemTemp.createTemp(
+        'open_vibrance_audio_test_',
+      );
+      final path = '${directory.path}${Platform.pathSeparator}recording.wav';
+      addTearDown(() async {
+        service.dispose();
+        await directory.delete(recursive: true);
+      });
+
+      final stream = await service.startStreaming(sampleRate: 24000);
+      final downstreamDone = Completer<void>();
+      stream.listen((_) {}, onDone: downstreamDone.complete);
+      recorder.add(Uint8List.fromList(<int>[1, 2]));
+
+      final stopFuture = service.stopStreaming(path);
+      await recorder.stopCalled.future;
+      recorder.releaseTail();
+      await stopFuture;
+      await downstreamDone.future;
+
+      expect(recorder.lastConfig!.sampleRate, 24000);
+      expect(recorder.lastConfig!.numChannels, 1);
+      expect(recorder.lastConfig!.encoder, AudioEncoder.pcm16bits);
+
+      final wav = await File(path).readAsBytes();
+      final header = ByteData.sublistView(wav);
+      expect(header.getUint32(24, Endian.little), 24000);
+      expect(header.getUint32(28, Endian.little), 48000);
+      expect(wav.sublist(44), <int>[1, 2, 3, 4]);
+    });
+
     test(
       'does not hang when the forwarded PCM stream has no listener',
       () async {
@@ -242,6 +276,7 @@ final class _DelayedTailRecorder extends AudioRecorder {
   final Completer<void> _release = Completer<void>();
   final Completer<void> stopCalled = Completer<void>();
   Duration? amplitudeInterval;
+  RecordConfig? lastConfig;
 
   void add(Uint8List chunk) => _raw.add(chunk);
 
@@ -257,8 +292,10 @@ final class _DelayedTailRecorder extends AudioRecorder {
   Future<bool> hasPermission() async => true;
 
   @override
-  Future<Stream<Uint8List>> startStream(RecordConfig config) async =>
-      _raw.stream;
+  Future<Stream<Uint8List>> startStream(RecordConfig config) async {
+    lastConfig = config;
+    return _raw.stream;
+  }
 
   @override
   Stream<Amplitude> onAmplitudeChanged(Duration interval) {
