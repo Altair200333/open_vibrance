@@ -390,7 +390,7 @@ void main() {
         expect(_membranePainter(tester).coefficients, initial);
       }
 
-      rebuild(() => frame = _spectrumFrame(hotBand: 4, sequence: 2));
+      rebuild(() => frame = _spectrumFrame(hotBand: 9, sequence: 2));
       await tester.pump();
       expect(_membranePainter(tester).coefficients, initial);
       await tester.pumpAndSettle(const Duration(milliseconds: 16));

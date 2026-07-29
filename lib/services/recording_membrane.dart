@@ -14,6 +14,7 @@ final class RecordingMembraneTarget {
     required this.colorPhase,
     required this.requestedReach,
     required this.actualReach,
+    this.charge = 0,
   }) : coefficients = List<double>.unmodifiable(
          RecordingMembraneModel.validatedCoefficients(coefficients),
        );
@@ -28,15 +29,20 @@ final class RecordingMembraneTarget {
   final double requestedReach;
   final double actualReach;
 
+  /// Accumulated sustain 0..1: grows while one sound is held steadily and
+  /// drains quickly once the sound changes or stops.
+  final double charge;
+
   double get activity =>
       _unit(0.30 * level + 0.45 * novelty / 0.12 + 0.25 * flux);
 }
 
 /// Stateful, deterministic audio-frame mapper.
 ///
-/// A slow spectral envelope is removed before the DFT projection. This keeps a
-/// person's persistent voice tilt from pinning the membrane to one silhouette,
-/// while a small absolute component preserves broad folds during held vowels.
+/// The contour is a radial equalizer: each spectrum band owns a fixed sector
+/// and the membrane follows the absolute band energies, so held sounds keep
+/// their silhouette. A slow spectral envelope is still tracked, but only to
+/// derive a novelty signal that accents onsets and drives impacts.
 final class RecordingMembraneMapper {
   RecordingMembraneMapper();
 
@@ -44,11 +50,12 @@ final class RecordingMembraneMapper {
       2 * AudioSpectrumAnalyzer.hopSize / 16000;
   static const double _slowEnvelopeSeconds = 0.52;
   static const double _colorReleaseSeconds = 0.20;
-  static const double _absoluteMix = 0.30;
-  static const double _noveltyMix = 0.70;
-  static const double _noveltyBoost = 2.50;
+  static const double _noveltyAccent = 1.40;
+  static const double _chargeSeconds = 1.1;
+  static const double _dischargeSeconds = 0.26;
+  static const double _chargeSwell = 1.2;
   static const double _targetSafetyInset = 0.3;
-  static const List<double> _modeWeights = [0, 0.06, 0.72, 0.90, 0.92, 0.62];
+  static const List<double> _modeWeights = [0, 0.22, 0.95, 1.0, 0.95, 0.80];
 
   final List<double> _slowBands = List<double>.filled(
     AudioSpectrumFrame.bandCount,
@@ -56,6 +63,7 @@ final class RecordingMembraneMapper {
   );
   bool _hasHistory = false;
   double _colorPhase = -math.pi / 2;
+  double _charge = 0;
 
   double get colorPhase => _colorPhase;
 
@@ -63,6 +71,7 @@ final class RecordingMembraneMapper {
     _slowBands.fillRange(0, _slowBands.length, 0);
     _hasHistory = false;
     _colorPhase = -math.pi / 2;
+    _charge = 0;
   }
 
   RecordingMembraneTarget map({
@@ -94,6 +103,9 @@ final class RecordingMembraneMapper {
     )..[0] = baseRadius;
 
     if (safeSpectrumMix == 0 || safeLevel == 0) {
+      _charge = _unit(
+        _charge * math.exp(-dt / _dischargeSeconds).toDouble(),
+      );
       return RecordingMembraneTarget(
         coefficients: coefficients,
         level: safeLevel,
@@ -104,6 +116,7 @@ final class RecordingMembraneMapper {
         colorPhase: _colorPhase,
         requestedReach: 0,
         actualReach: 0,
+        charge: _charge,
       );
     }
 
@@ -144,16 +157,29 @@ final class RecordingMembraneMapper {
       _slowBands[band] += (energies[band] - _slowBands[band]) * slowAlpha;
     }
 
+    // Radial-equalizer shaping: the contour follows the absolute spectrum
+    // (each band owns a fixed sector), while novelty only accents onsets.
     final shaped = List<double>.generate(
       energies.length,
-      (band) =>
-          _absoluteMix * absolute[band] +
-          _noveltyMix * _noveltyBoost * noveltySignal[band],
+      (band) => absolute[band] + _noveltyAccent * noveltySignal[band],
       growable: false,
     );
-    final meaningfulVariation = math.max(contrast * 0.24, novelty);
-    final gateInput = _unit((meaningfulVariation - 0.006) / 0.045);
+    final gateInput = _unit((contrast - 0.02) / 0.10);
     final noiseGate = gateInput * gateInput * (3 - 2 * gateInput);
+
+    // Sustain charge: a held sound (audible level, near-zero novelty) slowly
+    // builds energy; any change or silence drains it much faster.
+    final presenceInput = _unit((safeLevel - 0.10) / 0.18);
+    final presence = presenceInput * presenceInput * (3 - 2 * presenceInput);
+    final stability = _unit(1 - novelty / 0.075);
+    final sustain = presence * stability * noiseGate;
+    final chargeAlpha =
+        1 -
+        math.exp(
+          -dt / (sustain > _charge ? _chargeSeconds : _dischargeSeconds),
+        );
+    _charge = _unit(_charge + (sustain - _charge) * chargeAlpha);
+    coefficients[0] = baseRadius + _chargeSwell * _charge * presence;
 
     var totalEnergy = 0.0;
     var highEnergy = 0.0;
@@ -198,7 +224,9 @@ final class RecordingMembraneMapper {
 
     final rawBound = RecordingMembraneModel.acBound(coefficients);
     final gain =
-        42.0 * math.pow(safeLevel, 0.56).toDouble() * (0.82 + 0.30 * safeFlux);
+        30.0 *
+        math.pow(safeLevel, 0.56).toDouble() *
+        (0.85 + 0.25 * safeFlux + 0.18 * _unit(novelty / 0.12));
     final requestedReach = rawBound * gain;
     final availableReach = math.max(
       0,
@@ -227,6 +255,7 @@ final class RecordingMembraneMapper {
       colorPhase: _colorPhase,
       requestedReach: requestedReach,
       actualReach: actualReach,
+      charge: _charge,
     );
   }
 }
@@ -243,9 +272,9 @@ final class RecordingMembraneDynamics {
 
   static const double _baseOmega = 22;
   static const double _shapeOmega = 22;
-  static const double _baseDampingRatio = 1;
-  static const double _shapeDampingRatio = 1.00;
-  static const double _fineShapeDampingRatio = 1.00;
+  static const double _baseDampingRatio = 0.90;
+  static const double _shapeDampingRatio = 0.72;
+  static const double _fineShapeDampingRatio = 0.78;
   static const double _positionEpsilon = 0.002;
   static const double _velocityEpsilon = 0.02;
   static const double maxIntegratedSeconds = 0.25;

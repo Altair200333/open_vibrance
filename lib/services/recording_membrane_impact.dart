@@ -94,6 +94,7 @@ final class RecordingMembraneImpactController {
   static const double _shapeKickReference = 0.45;
   static const double _maximumOriginRadius = 0.40;
   static const double _maximumEccentricity = 0.55;
+  static const double _dischargeThreshold = 0.30;
 
   List<RecordingMembraneImpactSnapshot> _impacts = const [];
   List<double>? _previousCoefficients;
@@ -102,6 +103,7 @@ final class RecordingMembraneImpactController {
   var _secondsSinceImpact = double.infinity;
   var _lastDrive = 0.0;
   var _lastShapeKick = 0.0;
+  var _chargePeak = 0.0;
 
   List<RecordingMembraneImpactSnapshot> get impacts =>
       List<RecordingMembraneImpactSnapshot>.unmodifiable(_impacts);
@@ -137,6 +139,35 @@ final class RecordingMembraneImpactController {
     _lastShapeKick = shapeKick;
     _lastDrive = drive;
 
+    // Sustain discharge: energy accumulated by a held sound is released as a
+    // wave from the center once the charge collapses, even in silence where
+    // the level-gated drive can no longer trigger.
+    final charge = _unit(target.charge);
+    final releasing =
+        _chargePeak >= _dischargeThreshold && charge < 0.55 * _chargePeak;
+    if (charge > _chargePeak) _chargePeak = charge;
+    if (releasing && _secondsSinceImpact >= refractorySeconds) {
+      final released = _chargePeak;
+      _chargePeak = 0;
+      final angle = _finiteAngle(target.colorPhase);
+      return _emit(
+        RecordingMembraneImpactSnapshot(
+          id: _nextId++,
+          age: 0,
+          strength: 0.45 + 0.55 * released,
+          angle: angle,
+          origin: RecordingMembraneImpactOrigin(
+            x: 0.10 * math.cos(angle),
+            y: 0.10 * math.sin(angle),
+          ),
+          eccentricity: 0.12,
+          colorPhase: angle,
+          highBandShare: _unit(target.highBandShare),
+          lifetime: impactLifetime,
+        ),
+      );
+    }
+
     if (drive <= rearmDrive) _armed = true;
     if (!_armed ||
         drive < triggerDrive ||
@@ -156,24 +187,30 @@ final class RecordingMembraneImpactController {
     final strengthInput = _unit((drive - triggerDrive) / (1 - triggerDrive));
     final strengthCurve =
         strengthInput * strengthInput * (3 - 2 * strengthInput);
-    final impact = RecordingMembraneImpactSnapshot(
-      id: _nextId++,
-      age: 0,
-      strength: 0.40 + 0.60 * strengthCurve,
-      angle: angle,
-      origin: RecordingMembraneImpactOrigin(
-        x: originRadius * math.cos(angle),
-        y: originRadius * math.sin(angle),
+    return _emit(
+      RecordingMembraneImpactSnapshot(
+        id: _nextId++,
+        age: 0,
+        strength: 0.40 + 0.60 * strengthCurve,
+        angle: angle,
+        origin: RecordingMembraneImpactOrigin(
+          x: originRadius * math.cos(angle),
+          y: originRadius * math.sin(angle),
+        ),
+        eccentricity: math.min(
+          _maximumEccentricity,
+          0.10 + 0.30 * highBandShare + 0.12 * safeFlux,
+        ),
+        colorPhase: _finiteAngle(target.colorPhase),
+        highBandShare: highBandShare,
+        lifetime: impactLifetime,
       ),
-      eccentricity: math.min(
-        _maximumEccentricity,
-        0.10 + 0.30 * highBandShare + 0.12 * safeFlux,
-      ),
-      colorPhase: _finiteAngle(target.colorPhase),
-      highBandShare: highBandShare,
-      lifetime: impactLifetime,
     );
+  }
 
+  RecordingMembraneImpactSnapshot _emit(
+    RecordingMembraneImpactSnapshot impact,
+  ) {
     final next = List<RecordingMembraneImpactSnapshot>.of(_impacts);
     if (next.length == maxImpacts) next.removeAt(0);
     next.add(impact);
@@ -215,6 +252,7 @@ final class RecordingMembraneImpactController {
     _secondsSinceImpact = double.infinity;
     _lastDrive = 0;
     _lastShapeKick = 0;
+    _chargePeak = 0;
   }
 
   static List<double> _coefficientDelta(

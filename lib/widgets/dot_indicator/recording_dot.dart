@@ -183,6 +183,8 @@ class _RecordingDotState extends State<RecordingDot>
               level: _visualTarget.level,
               flux: _visualTarget.flux,
               novelty: _visualTarget.novelty,
+              highBandShare: _visualTarget.highBandShare,
+              charge: _visualTarget.charge,
               colorPhase: _visualTarget.colorPhase,
               fillColor: widget.fillColor,
               strokeColor: widget.borderColor,
@@ -203,6 +205,8 @@ class RecordingMembranePainter extends CustomPainter {
     this.level = 0,
     this.flux = 0,
     this.novelty = 0,
+    this.highBandShare = 0,
+    this.charge = 0,
     this.colorPhase = -math.pi / 2,
     required this.fillColor,
     required this.strokeColor,
@@ -239,9 +243,27 @@ class RecordingMembranePainter extends CustomPainter {
   final double level;
   final double flux;
   final double novelty;
+  final double highBandShare;
+  final double charge;
   final double colorPhase;
   final Color fillColor;
   final Color strokeColor;
+
+  /// Chameleon base hue driven by the spectral centroid: low sounds sit in
+  /// warm magenta-violet, bright sounds slide toward icy cyan. Charge both
+  /// saturates the hue and heats it toward glowing gold.
+  Color get _voiceColor {
+    final centroid = _unit((colorPhase + math.pi / 2) / (2 * math.pi));
+    final safeCharge = _unit(charge);
+    final base =
+        HSLColor.fromAHSL(
+          1,
+          (320.0 - 140.0 * centroid) % 360,
+          (0.60 + 0.22 * safeCharge).clamp(0.0, 1.0),
+          0.52,
+        ).toColor();
+    return Color.lerp(base, const Color(0xFFFFCE8A), 0.55 * safeCharge)!;
+  }
 
   static List<double> contourRadii({
     required double level,
@@ -260,8 +282,14 @@ class RecordingMembranePainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final radii = radiiFromCoefficients(coefficients);
     final center = size.center(Offset.zero);
+    final baseRadius = coefficients[0].clamp(minCenterRadius, maxCenterRadius);
+    final rendered = _renderedImpacts(center, baseRadius);
+    final radii = _waveDisplacedRadii(
+      radiiFromCoefficients(coefficients),
+      rendered,
+      center,
+    );
     final path = _pathForRadii(radii, center);
     final shaderBounds = Rect.fromCircle(
       center: center,
@@ -273,7 +301,6 @@ class RecordingMembranePainter extends CustomPainter {
     final activity = _unit(
       0.30 * safeLevel + 0.45 * safeNovelty + 0.25 * safeFlux,
     );
-    final baseRadius = coefficients[0].clamp(minCenterRadius, maxCenterRadius);
     final velocityValues = RecordingMembraneModel.periodicValues(velocity);
     final palette = _edgePalette(
       radii: radii,
@@ -284,6 +311,7 @@ class RecordingMembranePainter extends CustomPainter {
     canvas.save();
     try {
       canvas.clipRect(Offset.zero & size);
+      _applySquash(canvas, center, rendered);
 
       if (activity > 0.01) {
         final glowPaint =
@@ -302,22 +330,47 @@ class RecordingMembranePainter extends CustomPainter {
         canvas.drawPath(path, glowPaint);
       }
 
+      final flash = _impactFlash(rendered);
+      final coreShift =
+          rendered.isEmpty
+              ? const Offset(-0.16, -0.22)
+              : Offset.lerp(
+                const Offset(-0.16, -0.22),
+                (rendered.last.origin - center) / maxCenterRadius,
+                flash,
+              )!;
       canvas.drawPath(
         path,
         Paint()
           ..style = PaintingStyle.fill
-          ..color = _tone(
-            fillColor,
-            saturationFactor: 0.96,
-            lightnessFactor: 0.42,
-          ).withValues(alpha: 0.99)
+          ..shader = RadialGradient(
+            center: Alignment(coreShift.dx, coreShift.dy),
+            radius: 0.55,
+            colors: [
+              _tone(
+                _voiceColor,
+                saturationFactor: 1.00,
+                lightnessFactor:
+                    0.58 + 0.10 * activity + 0.24 * flash + 0.20 * _unit(charge),
+              ),
+              _tone(
+                _voiceColor,
+                saturationFactor: 0.98,
+                lightnessFactor:
+                    0.44 + 0.05 * activity + 0.08 * flash + 0.10 * _unit(charge),
+              ),
+              _tone(_voiceColor, saturationFactor: 1.06, lightnessFactor: 0.33),
+            ],
+            stops: const [0, 0.5, 1],
+          ).createShader(shaderBounds)
           ..isAntiAlias = true,
       );
 
-      if (activity > 0.01 || impacts.isNotEmpty) {
+      if (activity > 0.01 || rendered.isNotEmpty) {
         canvas.save();
         canvas.clipPath(path);
-        _paintImpacts(canvas: canvas, center: center, baseRadius: baseRadius);
+        _paintImpactBloom(canvas, rendered);
+        _paintImpacts(canvas: canvas, visible: rendered);
 
         if (activity > 0.01) {
           final innerBandPaint =
@@ -339,7 +392,7 @@ class RecordingMembranePainter extends CustomPainter {
             center: center,
             shaderBounds: shaderBounds,
             palette: palette,
-            activity: impacts.isEmpty ? activity : activity * 0.40,
+            activity: rendered.isEmpty ? activity : activity * 0.40,
             currentBaseRadius: baseRadius,
           );
         }
@@ -363,19 +416,98 @@ class RecordingMembranePainter extends CustomPainter {
         canvas: canvas,
         center: center,
         radii: radii,
-        baseRadius: baseRadius,
+        visible: rendered,
       );
     } finally {
       canvas.restore();
     }
   }
 
+  /// Radial displacement of the contour caused by traveling impact waves: a
+  /// crest at the wave front with a shallower trough trailing behind it, so
+  /// the ripple physically runs through the membrane's flesh.
+  List<double> _waveDisplacedRadii(
+    List<double> radii,
+    List<_RenderedImpact> rendered,
+    Offset center,
+  ) {
+    if (rendered.isEmpty) return radii;
+    return List<double>.generate(contourSampleCount, (sample) {
+      final angle = -math.pi / 2 + sample * 2 * math.pi / contourSampleCount;
+      final point =
+          center + Offset(math.cos(angle), math.sin(angle)) * radii[sample];
+      var displacement = 0.0;
+      for (final impact in rendered) {
+        final distance = _frontDistance(impact, point);
+        final crest = math.exp(-0.5 * math.pow(distance / 0.95, 2));
+        final trough = math.exp(-0.5 * math.pow((distance + 1.7) / 1.25, 2));
+        displacement +=
+            1.05 *
+            impact.envelope *
+            (0.55 + 0.45 * impact.snapshot.strength) *
+            (crest - 0.52 * trough);
+      }
+      return (radii[sample] + displacement).clamp(2.4, 13.5).toDouble();
+    }, growable: false);
+  }
+
+  /// Squash & stretch: freshly born impacts briefly elongate the whole blob
+  /// along the impact direction, giving each hit a tactile full-body recoil.
+  void _applySquash(
+    Canvas canvas,
+    Offset center,
+    List<_RenderedImpact> rendered,
+  ) {
+    if (rendered.isEmpty) return;
+    var amount = 0.0;
+    for (final impact in rendered) {
+      amount += 0.040 * impact.punch * math.exp(-impact.snapshot.age / 0.085);
+    }
+    amount = math.min(0.055, amount);
+    if (amount < 0.004) return;
+    final angle = rendered.last.snapshot.angle;
+    canvas.translate(center.dx, center.dy);
+    canvas.rotate(angle);
+    canvas.scale(1 + amount, 1 - 0.62 * amount);
+    canvas.rotate(-angle);
+    canvas.translate(-center.dx, -center.dy);
+  }
+
+  double _impactFlash(List<_RenderedImpact> rendered) {
+    var flash = 0.0;
+    for (final impact in rendered) {
+      flash += impact.punch * math.exp(-impact.snapshot.age / 0.09);
+    }
+    return math.min(1, flash);
+  }
+
+  /// Short light burst radiating from the impact origin.
+  void _paintImpactBloom(Canvas canvas, List<_RenderedImpact> rendered) {
+    for (final impact in rendered) {
+      final flash = impact.punch * math.exp(-impact.snapshot.age / 0.075);
+      if (flash < 0.02) continue;
+      final radius =
+          (2.0 + 2.8 * impact.punch) * (1 + 1.1 * impact.snapshot.progress);
+      canvas.drawCircle(
+        impact.origin,
+        radius,
+        Paint()
+          ..shader = RadialGradient(
+            colors: [
+              _crestColor.withValues(alpha: _unit(0.50 * flash)),
+              _crestColor.withValues(alpha: 0),
+            ],
+          ).createShader(Rect.fromCircle(center: impact.origin, radius: radius))
+          ..blendMode = BlendMode.screen
+          ..isAntiAlias = true,
+      );
+    }
+  }
+
   void _paintImpacts({
     required Canvas canvas,
-    required Offset center,
-    required double baseRadius,
+    required List<_RenderedImpact> visible,
   }) {
-    final visible = _renderedImpacts(center, baseRadius);
     if (visible.isEmpty) return;
     final secondary = visible.reduce(
       (first, second) => first.envelope >= second.envelope ? first : second,
@@ -391,13 +523,13 @@ class RecordingMembranePainter extends CustomPainter {
           impact: impact,
           radius: troughRadius,
           color: _tone(
-            fillColor,
+            _voiceColor,
             hueShift: -8,
             saturationFactor: 0.78,
             lightnessFactor: 0.28,
           ),
-          alpha: 0.18 * impact.envelope,
-          strokeWidth: 1.42,
+          alpha: 0.30 * impact.envelope,
+          strokeWidth: 1.90,
           blendMode: BlendMode.multiply,
           angularFloor: 0.06,
         );
@@ -411,8 +543,8 @@ class RecordingMembranePainter extends CustomPainter {
           impact: impact,
           radius: impact.frontRadius - 2.45,
           color: _crestColor,
-          alpha: 0.06 * impact.envelope,
-          strokeWidth: 0.50,
+          alpha: 0.10 * impact.envelope,
+          strokeWidth: 0.60,
           blendMode: BlendMode.screen,
           angularFloor: 0.00,
           chromatic: true,
@@ -425,10 +557,10 @@ class RecordingMembranePainter extends CustomPainter {
         impact: impact,
         radius: impact.frontRadius,
         color: _crestColor,
-        alpha: 0.18 * impact.envelope,
-        strokeWidth: 1.74,
+        alpha: 0.30 * impact.envelope,
+        strokeWidth: 2.10,
         blendMode: BlendMode.screen,
-        blurSigma: 0.32,
+        blurSigma: 0.40,
         angularFloor: 0.04,
         chromatic: true,
       );
@@ -437,8 +569,8 @@ class RecordingMembranePainter extends CustomPainter {
         impact: impact,
         radius: impact.frontRadius,
         color: _crestColor,
-        alpha: 0.64 * impact.envelope,
-        strokeWidth: 0.84,
+        alpha: 0.88 * impact.envelope,
+        strokeWidth: 1.06,
         blendMode: BlendMode.screen,
         angularFloor: 0.06,
         chromatic: true,
@@ -463,10 +595,10 @@ class RecordingMembranePainter extends CustomPainter {
       Paint()
         ..style = PaintingStyle.fill
         ..color = _tone(
-          fillColor,
+          _voiceColor,
           saturationFactor: 0.72,
           lightnessFactor: 0.24,
-        ).withValues(alpha: 0.06 * impact.snapshot.strength * life)
+        ).withValues(alpha: 0.09 * impact.snapshot.strength * life)
         ..blendMode = BlendMode.multiply
         ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 0.32)
         ..isAntiAlias = true,
@@ -481,7 +613,7 @@ class RecordingMembranePainter extends CustomPainter {
         ..strokeWidth = 0.48
         ..strokeCap = StrokeCap.round
         ..color = _crestColor.withValues(
-          alpha: 0.16 * impact.snapshot.strength * life,
+          alpha: 0.22 * impact.snapshot.strength * life,
         )
         ..blendMode = BlendMode.screen
         ..isAntiAlias = true,
@@ -589,7 +721,7 @@ class RecordingMembranePainter extends CustomPainter {
               ? Color.lerp(
                 Color.lerp(
                   _tone(
-                    fillColor,
+                    _voiceColor,
                     hueShift: -28,
                     saturationFactor: 1.08,
                     lightnessDelta: 0.20,
@@ -614,9 +746,8 @@ class RecordingMembranePainter extends CustomPainter {
     required Canvas canvas,
     required Offset center,
     required List<double> radii,
-    required double baseRadius,
+    required List<_RenderedImpact> visible,
   }) {
-    final visible = _renderedImpacts(center, baseRadius);
     if (visible.isEmpty) return;
     final points = List<Offset>.generate(contourSampleCount, (sample) {
       final angle = -math.pi / 2 + sample * 2 * math.pi / contourSampleCount;
@@ -627,16 +758,7 @@ class RecordingMembranePainter extends CustomPainter {
       var maximum = 0.0;
       for (final impact in visible) {
         if (impact.envelope <= 0.001) continue;
-        final delta = point - impact.origin;
-        final cosine = math.cos(impact.snapshot.angle);
-        final sine = math.sin(impact.snapshot.angle);
-        final u = delta.dx * cosine + delta.dy * sine;
-        final v = -delta.dx * sine + delta.dy * cosine;
-        final ellipticalRadius = math.sqrt(
-          math.pow(u / (1 + impact.eccentricity), 2) +
-              math.pow(v / (1 - 0.55 * impact.eccentricity), 2),
-        );
-        final distance = (ellipticalRadius - impact.frontRadius) / 0.68;
+        final distance = _frontDistance(impact, point) / 0.68;
         maximum = math.max(
           maximum,
           impact.envelope * math.exp(-0.5 * distance * distance),
@@ -652,11 +774,11 @@ class RecordingMembranePainter extends CustomPainter {
     final coreColors = <Color>[];
     for (var stop = 0; stop <= stopCount; stop++) {
       final sample = stop % stopCount * contourSampleCount ~/ stopCount;
-      final normalized = _unit(hits[sample] / 0.48);
+      final normalized = _unit(hits[sample] / 0.40);
       final intensity = normalized * normalized * (3 - 2 * normalized);
       stops.add(stop / stopCount);
-      glowColors.add(rimColor.withValues(alpha: 0.13 * intensity));
-      coreColors.add(rimColor.withValues(alpha: 0.27 * intensity));
+      glowColors.add(rimColor.withValues(alpha: 0.20 * intensity));
+      coreColors.add(rimColor.withValues(alpha: 0.42 * intensity));
     }
     final path = _pathForRadii(radii, center);
     final bounds = Rect.fromCircle(center: center, radius: maxCenterRadius);
@@ -694,12 +816,28 @@ class RecordingMembranePainter extends CustomPainter {
     );
   }
 
+  /// Signed distance from a contour point to an impact's elliptical wave
+  /// front, in pixels; negative values lie behind the front.
+  static double _frontDistance(_RenderedImpact impact, Offset point) {
+    final delta = point - impact.origin;
+    final cosine = math.cos(impact.snapshot.angle);
+    final sine = math.sin(impact.snapshot.angle);
+    final u = delta.dx * cosine + delta.dy * sine;
+    final v = -delta.dx * sine + delta.dy * cosine;
+    final ellipticalRadius = math.sqrt(
+      math.pow(u / (1 + impact.eccentricity), 2) +
+          math.pow(v / (1 - 0.55 * impact.eccentricity), 2),
+    );
+    return ellipticalRadius - impact.frontRadius;
+  }
+
   List<_RenderedImpact> _renderedImpacts(Offset center, double baseRadius) {
     final alive = impacts.where((impact) => impact.isAlive).toList();
     if (alive.length > 2) alive.removeRange(0, alive.length - 2);
     alive.sort((first, second) => second.age.compareTo(first.age));
     return List<_RenderedImpact>.unmodifiable(
       alive.map((snapshot) {
+        final strength = _unit(snapshot.strength);
         return _RenderedImpact(
           snapshot: snapshot,
           origin:
@@ -707,10 +845,8 @@ class RecordingMembranePainter extends CustomPainter {
               Offset(snapshot.origin.x, snapshot.origin.y) * baseRadius,
           frontRadius: snapshot.frontRadiusFor(baseRadius),
           eccentricity: (0.06 + 0.30 * snapshot.eccentricity).clamp(0.08, 0.23),
-          envelope: math.min(
-            1,
-            snapshot.fade * math.pow(math.max(snapshot.strength, 1e-6), -0.24),
-          ),
+          envelope: math.min(1, snapshot.fade),
+          punch: strength * strength * (3 - 2 * strength),
         );
       }),
     );
@@ -719,7 +855,7 @@ class RecordingMembranePainter extends CustomPainter {
   Color get _crestColor =>
       Color.lerp(
         _tone(
-          fillColor,
+          _voiceColor,
           hueShift: 24,
           saturationFactor: 1.05,
           lightnessDelta: 0.24,
@@ -786,18 +922,20 @@ class RecordingMembranePainter extends CustomPainter {
     required double baseRadius,
   }) {
     const stopCount = 24;
+    final safeCharge = _unit(charge);
     final warm = _tone(
-      fillColor,
+      _voiceColor,
       hueShift: -15,
       saturationFactor: 1.08,
       lightnessDelta: 0.16,
     );
     final cool = _tone(
-      fillColor,
+      _voiceColor,
       hueShift: 34,
       saturationFactor: 1.04,
       lightnessDelta: 0.13,
     );
+    const heat = Color(0xFFFFE2B8);
     final stops = <double>[];
     final rim = <Color>[];
     final glow = <Color>[];
@@ -808,9 +946,15 @@ class RecordingMembranePainter extends CustomPainter {
       final edge = _unit(
         0.55 * (radii[sample] - baseRadius).abs() / 4.8 +
             0.35 * velocityValues[sample].abs() / 24 +
-            0.10 * _unit(flux),
+            0.10 * _unit(flux) +
+            0.12 * _unit(highBandShare),
       );
-      final chroma = Color.lerp(warm, cool, 0.5 + 0.5 * math.cos(angle))!;
+      final chroma =
+          Color.lerp(
+            Color.lerp(warm, cool, 0.5 + 0.5 * math.cos(angle))!,
+            heat,
+            0.50 * safeCharge,
+          )!;
       stops.add(stop / stopCount);
       rim.add(
         Color.lerp(
@@ -819,8 +963,16 @@ class RecordingMembranePainter extends CustomPainter {
           0.46 + 0.49 * edge,
         )!.withValues(alpha: 0.74 + 0.24 * edge),
       );
-      glow.add(chroma.withValues(alpha: 0.07 + 0.11 * edge));
-      inner.add(chroma.withValues(alpha: 0.10 + 0.12 * edge));
+      glow.add(
+        chroma.withValues(
+          alpha: _unit((0.07 + 0.11 * edge) * (1 + 1.6 * safeCharge)),
+        ),
+      );
+      inner.add(
+        chroma.withValues(
+          alpha: _unit((0.10 + 0.12 * edge) * (1 + 1.4 * safeCharge)),
+        ),
+      );
     }
     return _MembranePalette(
       stops: List<double>.unmodifiable(stops),
@@ -853,6 +1005,8 @@ class RecordingMembranePainter extends CustomPainter {
         level != oldDelegate.level ||
         flux != oldDelegate.flux ||
         novelty != oldDelegate.novelty ||
+        highBandShare != oldDelegate.highBandShare ||
+        charge != oldDelegate.charge ||
         colorPhase != oldDelegate.colorPhase ||
         !_sameList(coefficients, oldDelegate.coefficients) ||
         !_sameList(velocity, oldDelegate.velocity) ||
@@ -871,6 +1025,7 @@ final class _RenderedImpact {
     required this.frontRadius,
     required this.eccentricity,
     required this.envelope,
+    required this.punch,
   });
 
   final RecordingMembraneImpactSnapshot snapshot;
@@ -878,6 +1033,7 @@ final class _RenderedImpact {
   final double frontRadius;
   final double eccentricity;
   final double envelope;
+  final double punch;
 }
 
 final class _AngularPalette {
