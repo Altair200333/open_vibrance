@@ -28,6 +28,12 @@ dependencies:
   fftea: ^1.5.0+1
 
 
+dependency_overrides:
+  # Local fork: fixes uninitialized INPUT[6] array sent fully to SendInput,
+  # which injected garbage mouse/keyboard events in release builds
+  keypress_simulator_windows:
+    path: ../keypress_simulator_windows
+
 dev_dependencies:
   fake_async: ^1.3.2
   flutter_test:
