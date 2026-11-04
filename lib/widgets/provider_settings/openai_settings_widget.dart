@@ -6,6 +6,7 @@ import 'package:open_vibrance/theme/app_color_theme.dart';
 import 'package:open_vibrance/theme/app_styles.dart';
 import 'package:open_vibrance/widgets/constants.dart';
 import 'package:open_vibrance/transcription/types.dart';
+import 'package:open_vibrance/widgets/provider_settings/secret_api_key_field.dart';
 
 class OpenAiSettingsWidget extends StatefulWidget {
   const OpenAiSettingsWidget({super.key});
@@ -106,10 +107,8 @@ class _OpenAiSettingsWidgetState extends State<OpenAiSettingsWidget> {
           ),
         ),
         SizedBox(height: 8),
-        TextField(
+        SecretApiKeyField(
           controller: _openAiApiKeyController,
-          decoration: InputDecoration(hintText: 'Enter your API key'),
-          style: TextStyle(color: colors.textPrimary),
           onChanged: _onOpenAiApiKeyChanged,
         ),
         SizedBox(height: 32),

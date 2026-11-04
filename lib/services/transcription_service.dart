@@ -1,6 +1,9 @@
 import 'dart:io';
+import 'package:open_vibrance/transcription/composite_config.dart';
+import 'package:open_vibrance/transcription/composite_transcription_provider.dart';
 import 'package:open_vibrance/transcription/custom_transcription_provider.dart';
 import 'package:open_vibrance/transcription/elevenlabs_realtime_transcription_provider.dart';
+import 'package:open_vibrance/transcription/google_transcription_provider.dart';
 import 'package:open_vibrance/transcription/openai_realtime_transcription_provider.dart';
 import 'package:open_vibrance/transcription/openai_transcription_provider.dart';
 import 'package:open_vibrance/transcription/streaming_transcription_provider.dart';
@@ -49,6 +52,10 @@ class TranscriptionService {
         return ElevenLabsTranscriptionProvider(storageService: _storageService);
       case TranscriptionProviderKey.openai:
         return OpenAITranscriptionProvider(storageService: _storageService);
+      case TranscriptionProviderKey.google:
+        return GoogleTranscriptionProvider(storageService: _storageService);
+      case TranscriptionProviderKey.composite:
+        return CompositeTranscriptionProvider(storageService: _storageService);
       case TranscriptionProviderKey.custom:
         return CustomTranscriptionProvider();
     }
@@ -96,9 +103,31 @@ class TranscriptionService {
           prompt: prompt,
         );
 
+      case TranscriptionProviderKey.google:
+      case TranscriptionProviderKey.composite:
       case TranscriptionProviderKey.custom:
         return null;
     }
+  }
+
+  /// Composite with at least one live slot; null means record to a file and
+  /// let [transcribeFileAndPaste] run every Composite slot on it.
+  Future<CompositeLiveRun?> getCompositeLiveRun() async {
+    if (await _getSelectedProvider() != TranscriptionProviderKey.composite) {
+      return null;
+    }
+    final config = await CompositeConfig.load(_storageService);
+    final factory = CompositeSlotFactory(_storageService);
+    final streamers = [
+      for (final slot in config.slots) await factory.streaming(slot),
+    ];
+    if (streamers.every((s) => s == null)) return null;
+    return CompositeLiveRun(
+      slots: config.slots,
+      streamers: streamers,
+      batchFor: factory.batch,
+      merge: await factory.merger(config),
+    );
   }
 
   Future<String> transcribeFileAndPaste(
@@ -135,6 +164,12 @@ class TranscriptionService {
       ),
       TranscriptionProviderKey.openai => OpenAITranscriptionProvider(
         modelOverride: OpenAIModel.gptTranscribe,
+        storageService: _storageService,
+      ),
+      TranscriptionProviderKey.google => GoogleTranscriptionProvider(
+        storageService: _storageService,
+      ),
+      TranscriptionProviderKey.composite => CompositeTranscriptionProvider(
         storageService: _storageService,
       ),
       TranscriptionProviderKey.custom =>

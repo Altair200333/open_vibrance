@@ -7,6 +7,8 @@ import 'package:open_vibrance/theme/app_styles.dart';
 import 'package:open_vibrance/widgets/constants.dart';
 import 'package:open_vibrance/widgets/provider_settings/elevenlabs_settings_widget.dart';
 import 'package:open_vibrance/widgets/provider_settings/openai_settings_widget.dart';
+import 'package:open_vibrance/widgets/provider_settings/google_settings_widget.dart';
+import 'package:open_vibrance/widgets/provider_settings/composite_settings_widget.dart';
 import 'package:open_vibrance/widgets/provider_settings/custom_settings_widget.dart';
 
 class TranscriptionProviderConfigurationView extends StatefulWidget {
@@ -94,6 +96,10 @@ class _TranscriptionProviderConfigurationViewState
         return const ElevenLabsSettingsWidget();
       case TranscriptionProviderKey.openai:
         return const OpenAiSettingsWidget();
+      case TranscriptionProviderKey.google:
+        return const GoogleSettingsWidget();
+      case TranscriptionProviderKey.composite:
+        return const CompositeSettingsWidget();
       case TranscriptionProviderKey.custom:
         return const CustomSettingsWidget();
     }

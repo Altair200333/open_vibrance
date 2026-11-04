@@ -90,6 +90,26 @@ class _DotWindowState extends State<DotWindow>
     try {
       path = await _historyRepository.generateRecordingPath();
       if (_disposed) return;
+
+      final compositeRun = await _transcriptionService.getCompositeLiveRun();
+      if (_disposed) {
+        await compositeRun?.dispose();
+        return;
+      }
+      if (compositeRun != null) {
+        final pcmStream = await _audioService.startStreaming(
+          sampleRate: compositeRun.recordingSampleRate,
+        );
+        if (_disposed) {
+          await compositeRun.dispose();
+          await _audioService.forceReset();
+          return;
+        }
+        compositeRun.attach(pcmStream);
+        _session = CompositeSession(recordingPath: path, run: compositeRun);
+        return;
+      }
+
       final streamingProvider =
           await _transcriptionService.getStreamingProvider();
       if (_disposed) return;
@@ -198,6 +218,8 @@ class _DotWindowState extends State<DotWindow>
       switch (session) {
         case StreamingSession():
           await _stopStreaming(session);
+        case CompositeSession():
+          await _stopComposite(session);
         case BatchSession():
           await _stopBatch(session);
       }
@@ -239,9 +261,32 @@ class _DotWindowState extends State<DotWindow>
       session.provider.providerKey,
     );
     dprint('[Transcription][after-filter] $transcription');
-    if (_disposed || session.cancelled || !identical(_session, session)) {
-      return;
-    }
+    await _deliverLiveTranscription(
+      path,
+      transcription,
+      () => _disposed || session.cancelled || !identical(_session, session),
+    );
+  }
+
+  Future<void> _stopComposite(CompositeSession session) async {
+    final path = await _audioService.stopStreaming(session.recordingPath);
+    if (_disposed || session.cancelled) return;
+    final transcription = await session.run.finish(path);
+    await _deliverLiveTranscription(
+      path,
+      transcription,
+      () => _disposed || session.cancelled || !identical(_session, session),
+    );
+  }
+
+  /// Shared tail of the live paths. [isStale] is re-checked after each await
+  /// so a cancelled session never saves or pastes a provisional value.
+  Future<void> _deliverLiveTranscription(
+    String path,
+    String transcription,
+    bool Function() isStale,
+  ) async {
+    if (isStale()) return;
 
     // Save history FIRST — clipboard failure must not lose the transcription
     await _saveHistoryEntry(
@@ -250,15 +295,13 @@ class _DotWindowState extends State<DotWindow>
       success: transcription.isNotEmpty,
     );
 
-    if (_disposed || session.cancelled) return;
+    if (isStale()) return;
 
     if (transcription.isNotEmpty) {
       try {
         await FlutterClipboard.copy(transcription);
         await Future.delayed(const Duration(milliseconds: 100));
-        if (_disposed || session.cancelled || !identical(_session, session)) {
-          return;
-        }
+        if (isStale()) return;
         await pasteContent();
       } catch (e) {
         dprint('Clipboard/paste failed: $e');

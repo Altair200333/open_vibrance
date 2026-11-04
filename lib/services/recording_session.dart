@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:open_vibrance/transcription/composite_transcription_provider.dart';
 import 'package:open_vibrance/transcription/streaming_transcription_provider.dart';
 
 sealed class RecordingSession {
@@ -41,6 +42,20 @@ class StreamingSession extends RecordingSession {
       transcriptDone.complete();
     }
     await transcriptSubscription?.cancel();
+  }
+}
+
+/// Composite recording with live slots; file slots start after stop.
+class CompositeSession extends RecordingSession {
+  final CompositeLiveRun run;
+  bool cancelled = false;
+
+  CompositeSession({required super.recordingPath, required this.run});
+
+  @override
+  Future<void> dispose() async {
+    cancelled = true;
+    await run.dispose();
   }
 }
 

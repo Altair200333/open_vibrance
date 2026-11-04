@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:dropdown_button2/dropdown_button2.dart';
+import 'package:open_vibrance/services/openrouter_chat.dart';
 import 'package:open_vibrance/services/storage_service.dart';
 import 'package:open_vibrance/transcription/elevenlabs_transcription_provider.dart';
 import 'package:open_vibrance/theme/app_color_theme.dart';
 import 'package:open_vibrance/theme/app_styles.dart';
 import 'package:open_vibrance/widgets/constants.dart';
 import 'package:open_vibrance/transcription/types.dart';
+import 'package:open_vibrance/widgets/provider_settings/secret_api_key_field.dart';
 import 'package:open_vibrance/utils/common.dart';
 
 class ElevenLabsSettingsWidget extends StatefulWidget {
@@ -157,10 +159,7 @@ class _ElevenLabsSettingsWidgetState extends State<ElevenLabsSettingsWidget> {
 
   Future<void> _saveOpenRouterApiKey(String apiKey, int generation) async {
     try {
-      await SecureStorageService().saveValue(
-        StorageKey.openRouterApiKey.key,
-        apiKey,
-      );
+      await saveOpenRouterApiKey(SecureStorageService(), apiKey);
       if (mounted && generation == _openRouterApiKeyWriteGeneration) {
         setState(() => _transcriptionFilteringSettingsError = null);
       }
@@ -196,10 +195,8 @@ class _ElevenLabsSettingsWidgetState extends State<ElevenLabsSettingsWidget> {
           style: TextStyle(color: colors.textHint, fontSize: kFontSizeSm),
         ),
         SizedBox(height: 8),
-        TextField(
+        SecretApiKeyField(
           controller: _apiKeyController,
-          decoration: InputDecoration(hintText: 'Enter your API key'),
-          style: TextStyle(color: colors.textPrimary),
           onChanged: _onElevenLabsApiKeyChanged,
         ),
         SizedBox(height: 32),
@@ -293,15 +290,9 @@ class _ElevenLabsSettingsWidgetState extends State<ElevenLabsSettingsWidget> {
               style: TextStyle(color: colors.textHint, fontSize: kFontSizeSm),
             ),
             SizedBox(height: 8),
-            TextField(
+            SecretApiKeyField(
               controller: _openRouterApiKeyController,
-              decoration: InputDecoration(
-                hintText: 'Enter your OpenRouter API key',
-              ),
-              style: TextStyle(color: colors.textPrimary),
-              obscureText: true,
-              enableSuggestions: false,
-              autocorrect: false,
+              hintText: 'Enter your OpenRouter API key',
               onChanged: _onOpenRouterApiKeyChanged,
             ),
           ],

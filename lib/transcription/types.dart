@@ -7,6 +7,10 @@ enum StorageKey {
   openAiApiKey('openai_api_key'),
   openAiModel('openai_model'),
   openAiPrompt('openai_prompt'),
+  googleApiKey('google_api_key'),
+  googleModel('google_model'),
+  compositeSlots('composite_slots'),
+  compositeMergerModel('composite_merger_model'),
   customPythonScript('custom_python_script'),
   recordingHotkey('recording_hotkey');
 
@@ -17,6 +21,8 @@ enum StorageKey {
 enum TranscriptionProviderKey {
   elevenlabs('elevenlabs_provider'),
   openai('openai_provider'),
+  google('google_provider'),
+  composite('composite_provider'),
   custom('custom_provider');
 
   final String key;
@@ -30,6 +36,10 @@ extension TranscriptionProviderKeyExtension on TranscriptionProviderKey {
         return 'ElevenLabs';
       case TranscriptionProviderKey.openai:
         return 'OpenAI';
+      case TranscriptionProviderKey.google:
+        return 'Google';
+      case TranscriptionProviderKey.composite:
+        return 'Composite';
       case TranscriptionProviderKey.custom:
         return 'Custom';
     }
