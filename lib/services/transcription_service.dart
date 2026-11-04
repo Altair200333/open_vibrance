@@ -15,6 +15,7 @@ import 'package:open_vibrance/utils/clipboard.dart';
 import 'package:open_vibrance/utils/common.dart';
 import 'package:open_vibrance/transcription/types.dart';
 import 'package:open_vibrance/services/openrouter_transcription_filter.dart';
+import 'package:open_vibrance/services/openrouter_chat.dart';
 
 typedef TranscriptionFilterFactory =
     TranscriptionFilter Function(String apiKey);
@@ -42,6 +43,20 @@ class TranscriptionService {
       (p) => p.key == storedValue,
       orElse: () => TranscriptionProviderKey.elevenlabs,
     );
+  }
+
+  /// Called when recording starts: opens the OpenRouter connection while the
+  /// user speaks, so Gemini and the merger skip the TLS handshake on release.
+  Future<void> warmUpConnections() async {
+    try {
+      final provider = await _getSelectedProvider();
+      if (provider == TranscriptionProviderKey.google ||
+          provider == TranscriptionProviderKey.composite) {
+        await warmUpOpenRouter(_storageService);
+      }
+    } catch (e) {
+      dprint('Connection warm-up skipped: $e');
+    }
   }
 
   Future<TranscriptionProvider> _getProvider() async {

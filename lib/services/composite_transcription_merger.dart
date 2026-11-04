@@ -124,7 +124,7 @@ Return ONLY the final merged transcript text, with no labels, quotes or comments
       'temperature': 0,
       'max_tokens': (longest * 2 + 256).clamp(256, 65536),
       'reasoning': {'enabled': false, 'exclude': true},
-      'provider': {'sort': 'latency'},
+      'provider': openRouterDeepSeekRouting,
     };
   }
 

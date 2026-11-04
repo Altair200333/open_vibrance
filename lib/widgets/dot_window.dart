@@ -43,6 +43,7 @@ class _DotWindowState extends State<DotWindow>
   final TranscriptionService _transcriptionService = TranscriptionService();
   final HistoryRepository _historyRepository = HistoryRepository();
   Timer? _exitDebounce;
+  Timer? _keepAliveTimer;
   Size _actualIdleSize = initialWindowSize;
 
   RecordingSession? _session;
@@ -90,6 +91,17 @@ class _DotWindowState extends State<DotWindow>
     try {
       path = await _historyRepository.generateRecordingPath();
       if (_disposed) return;
+      unawaited(_transcriptionService.warmUpConnections());
+      // OpenRouter drops an idle connection after 30-60 s (measured), so a
+      // long dictation keeps it open until release.
+      _keepAliveTimer?.cancel();
+      _keepAliveTimer = Timer.periodic(const Duration(seconds: 25), (timer) {
+        if (_disposed || _indicatorState != IndicatorState.recording) {
+          timer.cancel();
+          return;
+        }
+        unawaited(_transcriptionService.warmUpConnections());
+      });
 
       final compositeRun = await _transcriptionService.getCompositeLiveRun();
       if (_disposed) {
@@ -499,6 +511,7 @@ class _DotWindowState extends State<DotWindow>
   void dispose() {
     _disposed = true;
     _exitDebounce?.cancel();
+    _keepAliveTimer?.cancel();
     _settingsTransition.dispose();
     _settingsTransitionController.dispose();
     // Cancel transcript finalization immediately. `_disposed` prevents the

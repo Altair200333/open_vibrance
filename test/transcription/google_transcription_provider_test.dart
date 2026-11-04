@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:open_vibrance/services/openrouter_chat.dart';
 import 'package:open_vibrance/services/storage_service.dart';
 import 'package:open_vibrance/transcription/google_transcription_provider.dart';
 import 'package:open_vibrance/transcription/types.dart';
@@ -46,7 +47,7 @@ void main() {
     final body = jsonDecode(sent.body) as Map<String, dynamic>;
     expect(body['model'], 'google/gemini-3.5-flash-lite');
     expect(body['reasoning'], {'effort': 'minimal', 'exclude': true});
-    expect(body['provider'], {'sort': 'latency'});
+    expect(body['provider'], openRouterGeminiRouting);
     expect(body['temperature'], 0);
     final audio = (body['messages'][1]['content'] as List).last;
     expect(audio['input_audio'], {'data': 'AQID', 'format': 'wav'});

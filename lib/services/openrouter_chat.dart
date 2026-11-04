@@ -1,13 +1,58 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:http/http.dart' as http;
+import 'package:http/io_client.dart';
 import 'package:open_vibrance/services/storage_service.dart';
 import 'package:open_vibrance/transcription/types.dart';
+import 'package:open_vibrance/utils/common.dart';
 
 final Uri openRouterChatEndpoint = Uri.parse(
   'https://openrouter.ai/api/v1/chat/completions',
 );
+
+/// One keep-alive connection pool for every OpenRouter call. A new client per
+/// request paid a fresh DNS + TCP + TLS handshake (~180 ms measured) twice per
+/// Composite dictation: once for Gemini and once for the merger.
+final http.Client _sharedClient = IOClient(
+  HttpClient()..idleTimeout = const Duration(minutes: 2),
+);
+
+/// Gemini audio routing: standard endpoints only, AI Studio first. `flex`
+/// (cheap queue, slow outliers) and `priority` (1.8x price, not faster in our
+/// measurements) are excluded. Every Gemini model on OpenRouter has both tags.
+const openRouterGeminiRouting = {
+  'order': ['google-ai-studio', 'google-vertex/global'],
+  'only': ['google-ai-studio', 'google-vertex/global'],
+  'allow_fallbacks': true,
+};
+
+/// DeepSeek V4.1 Flash routing for the Composite merger: the two endpoints
+/// with the lowest and steadiest latency in our measurements, then the usual
+/// fallbacks minus Novita (ignores `reasoning.enabled: false`, 5-15 s).
+const openRouterDeepSeekRouting = {
+  'order': ['together', 'crusoe/fp8'],
+  'ignore': ['novita'],
+  'allow_fallbacks': true,
+};
+
+/// Opens the TLS connection to OpenRouter while the user is still speaking,
+/// so the requests after the hotkey release reuse it. Never throws.
+Future<void> warmUpOpenRouter(SecureStorageService storage) async {
+  try {
+    final apiKey = await readOpenRouterApiKey(storage);
+    if (apiKey == null) return;
+    await _sharedClient
+        .get(
+          Uri.parse('https://openrouter.ai/api/v1/key'),
+          headers: {'Authorization': 'Bearer $apiKey'},
+        )
+        .timeout(const Duration(seconds: 5));
+  } catch (e) {
+    dprint('[OpenRouter] warm-up failed: $e');
+  }
+}
 
 /// The Google provider and the Composite merger both talk to OpenRouter.
 /// The user may have typed the key into either field, so each one prefers its
@@ -45,35 +90,42 @@ Future<String> postOpenRouterChat({
   required Duration timeout,
   http.Client? client,
 }) async {
-  final httpClient = client ?? http.Client();
-  try {
-    final response = await httpClient
-        .post(
-          openRouterChatEndpoint,
-          headers: {
-            'Authorization': 'Bearer $apiKey',
-            'Content-Type': 'application/json',
-            'X-OpenRouter-Title': 'Open Vibrance',
-          },
-          body: jsonEncode(body),
-        )
-        .timeout(timeout);
-    final responseBody = utf8.decode(response.bodyBytes);
+  final httpClient = client ?? _sharedClient;
+  final encoded = jsonEncode(body);
+  Future<http.Response> send() => httpClient
+      .post(
+        openRouterChatEndpoint,
+        headers: {
+          'Authorization': 'Bearer $apiKey',
+          'Content-Type': 'application/json',
+          'X-OpenRouter-Title': 'Open Vibrance',
+        },
+        body: encoded,
+      )
+      .timeout(timeout);
 
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      final snippet =
-          responseBody.length > 300
-              ? '${responseBody.substring(0, 300)}…'
-              : responseBody;
-      throw Exception(
-        'OpenRouter ${body['model']} failed '
-        '(HTTP ${response.statusCode}): $snippet',
-      );
-    }
-    return _parseContent(responseBody);
-  } finally {
-    if (client == null) httpClient.close();
+  http.Response response;
+  try {
+    response = await send();
+  } on http.ClientException catch (e) {
+    // A pooled keep-alive socket the server closed while idle fails at once;
+    // one retry on a fresh connection is enough.
+    dprint('[OpenRouter] connection error, retrying once: $e');
+    response = await send();
   }
+  final responseBody = utf8.decode(response.bodyBytes);
+
+  if (response.statusCode < 200 || response.statusCode >= 300) {
+    final snippet =
+        responseBody.length > 300
+            ? '${responseBody.substring(0, 300)}…'
+            : responseBody;
+    throw Exception(
+      'OpenRouter ${body['model']} failed '
+      '(HTTP ${response.statusCode}): $snippet',
+    );
+  }
+  return _parseContent(responseBody);
 }
 
 String _parseContent(String responseBody) {

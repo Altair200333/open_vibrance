@@ -7,6 +7,7 @@ import 'package:open_vibrance/services/storage_service.dart';
 import 'package:open_vibrance/transcription/transcription_provider.dart';
 import 'package:open_vibrance/transcription/types.dart';
 import 'package:open_vibrance/utils/common.dart';
+import 'package:open_vibrance/utils/pcm_resampler.dart';
 
 enum GoogleModel {
   gemini35Flash('google/gemini-3.5-flash'),
@@ -93,7 +94,9 @@ Return ONLY the transcript text. If there is no speech, return an empty string.
             {
               'type': 'input_audio',
               'input_audio': {
-                'data': base64Encode(audioBytes),
+                // Gemini tokenizes audio at 16 kHz anyway: same audio tokens,
+                // a third less to upload for 24 kHz Composite recordings.
+                'data': base64Encode(downsampleWav(audioBytes)),
                 'format': 'wav',
               },
             },
@@ -102,7 +105,7 @@ Return ONLY the transcript text. If there is no speech, return an empty string.
       ],
       'temperature': 0,
       'reasoning': {'effort': model.reasoningEffort, 'exclude': true},
-      'provider': {'sort': 'latency'},
+      'provider': openRouterGeminiRouting,
     };
   }
 

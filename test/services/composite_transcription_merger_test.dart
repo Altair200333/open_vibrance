@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:open_vibrance/services/composite_transcription_merger.dart';
+import 'package:open_vibrance/services/openrouter_chat.dart';
 
 const _slots = [
   CompositeHypothesis(label: 'OpenAI', text: 'Работаю я от офиса, ок?'),
@@ -43,7 +44,7 @@ void main() {
     expect(await merger.merge(_slots), 'Работаю я от Opus, ок?');
     expect(body['model'], 'deepseek/deepseek-v4.1-flash');
     expect(body['reasoning'], {'enabled': false, 'exclude': true});
-    expect(body['provider'], {'sort': 'latency'});
+    expect(body['provider'], openRouterDeepSeekRouting);
     expect(body['temperature'], 0);
     final user = body['messages'][1]['content'] as String;
     expect(user, contains('Slot 2 (Google):\nработаю я топус ок'));

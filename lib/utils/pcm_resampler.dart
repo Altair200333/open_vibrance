@@ -1,5 +1,68 @@
 import 'dart:typed_data';
 
+/// Returns a 16-bit mono PCM WAV resampled down to [toRate]. Anything else
+/// (other formats, stereo, already at or below [toRate], malformed header)
+/// comes back unchanged, so callers can always pass the original bytes.
+Uint8List downsampleWav(Uint8List wav, {int toRate = 16000}) {
+  if (wav.length < 12) return wav;
+  final data = ByteData.sublistView(wav);
+  String tag(int at) => String.fromCharCodes(wav.sublist(at, at + 4));
+  if (tag(0) != 'RIFF' || tag(8) != 'WAVE') return wav;
+
+  int? rate;
+  var pcm16Mono = false;
+  var offset = 12;
+  while (offset + 8 <= wav.length) {
+    final id = tag(offset);
+    final size = data.getUint32(offset + 4, Endian.little);
+    final body = offset + 8;
+    if (id == 'fmt ' && size >= 16 && body + 16 <= wav.length) {
+      pcm16Mono =
+          data.getUint16(body, Endian.little) == 1 &&
+          data.getUint16(body + 2, Endian.little) == 1 &&
+          data.getUint16(body + 14, Endian.little) == 16;
+      rate = data.getUint32(body + 4, Endian.little);
+    } else if (id == 'data') {
+      if (!pcm16Mono || rate == null || rate <= toRate) return wav;
+      final end = (body + size).clamp(body, wav.length);
+      final pcm = Pcm16Resampler(
+        fromRate: rate,
+        toRate: toRate,
+      ).convert(Uint8List.sublistView(wav, body, end));
+      return _pcm16MonoWav(pcm, toRate);
+    }
+    offset = body + size + (size.isOdd ? 1 : 0);
+  }
+  return wav;
+}
+
+Uint8List _pcm16MonoWav(Uint8List pcm, int rate) {
+  final header = ByteData(44);
+  void tag(int at, String s) {
+    for (var i = 0; i < 4; i++) {
+      header.setUint8(at + i, s.codeUnitAt(i));
+    }
+  }
+
+  tag(0, 'RIFF');
+  header.setUint32(4, 36 + pcm.length, Endian.little);
+  tag(8, 'WAVE');
+  tag(12, 'fmt ');
+  header.setUint32(16, 16, Endian.little);
+  header.setUint16(20, 1, Endian.little); // PCM
+  header.setUint16(22, 1, Endian.little); // mono
+  header.setUint32(24, rate, Endian.little);
+  header.setUint32(28, rate * 2, Endian.little); // byte rate
+  header.setUint16(32, 2, Endian.little); // block align
+  header.setUint16(34, 16, Endian.little); // bits per sample
+  tag(36, 'data');
+  header.setUint32(40, pcm.length, Endian.little);
+  return (BytesBuilder(copy: false)
+        ..add(header.buffer.asUint8List())
+        ..add(pcm))
+      .toBytes();
+}
+
 /// Streaming linear resampler for mono little-endian PCM16.
 ///
 /// Keeps state across chunks (last sample, fractional read position, a

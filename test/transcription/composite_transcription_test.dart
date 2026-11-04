@@ -41,6 +41,38 @@ void main() {
       toRate: 24000,
     ).convert(_pcm([0, 300, 600]));
     expect(ByteData.sublistView(ramp).getInt16(2, Endian.little), 200);
+
+    // WAV for Gemini: 24 kHz -> 16 kHz with a fresh header; others untouched.
+    Uint8List wav(int rate, Uint8List pcm) {
+      final h = ByteData(44);
+      for (final (at, s) in [
+        (0, 'RIFF'),
+        (8, 'WAVE'),
+        (12, 'fmt '),
+        (36, 'data'),
+      ]) {
+        for (var i = 0; i < 4; i++) {
+          h.setUint8(at + i, s.codeUnitAt(i));
+        }
+      }
+      h
+        ..setUint32(4, 36 + pcm.length, Endian.little)
+        ..setUint32(16, 16, Endian.little)
+        ..setUint16(20, 1, Endian.little)
+        ..setUint16(22, 1, Endian.little)
+        ..setUint32(24, rate, Endian.little)
+        ..setUint16(34, 16, Endian.little)
+        ..setUint32(40, pcm.length, Endian.little);
+      return Uint8List.fromList([...h.buffer.asUint8List(), ...pcm]);
+    }
+
+    final down = downsampleWav(wav(24000, input));
+    final header = ByteData.sublistView(down);
+    expect(header.getUint32(24, Endian.little), 16000);
+    expect(header.getUint32(40, Endian.little), whole.length);
+    expect(down.sublist(44), whole);
+    final already16k = wav(16000, input);
+    expect(identical(downsampleWav(already16k), already16k), isTrue);
   });
 
   test('hybrid run: live slots, file slots, failures and fallback', () async {
